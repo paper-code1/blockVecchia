@@ -1,0 +1,597 @@
+#ifndef VECCHIA_HELPER_H
+#define VECCHIA_HELPER_H
+
+#define PI (3.141592653589793)
+#define BATCHCOUNT_MAX 999999999
+
+#include "magma_v2.h"
+
+/***************************************************************************/ /**
+                                                                               * Macros to handle error checking.
+                                                                               */
+
+#define TESTING_CHECK(err)                                                  \
+    do                                                                      \
+    {                                                                       \
+        magma_int_t err_ = (err);                                           \
+        if (err_ != 0)                                                      \
+        {                                                                   \
+            fprintf(stderr, "Error: %s\nfailed at %s:%d: error %lld: %s\n", \
+                    #err, __FILE__, __LINE__,                               \
+                    (long long)err_, magma_strerror(err_));                 \
+            exit(1);                                                        \
+        }                                                                   \
+    } while (0)
+
+typedef struct llh_data
+{
+
+    int cs;
+    int num_loc;
+    size_t batchCount;
+
+    // MAGMA memory allocation in advanace (host)
+    double *h_Cov, *h_obs;
+    double *h_Cov_conditioning, *h_Cov_cross, *h_obs_conditioning;
+    double **h_Cov_conditioning_array;
+    double **h_Cov_cross_array;
+    double **h_obs_conditioning_array_copy;
+
+    // MAGMA memory allocation in advanace (device)
+    double *d_Cov, *d_obs;
+    double **d_Cov_array, **d_obs_array;
+    double *d_Cov_conditioning, *d_Cov_cross, *d_obs_conditioning;
+    double **d_Cov_conditioning_array, **d_Cov_cross_array, **d_obs_conditioning_array;
+    double *d_obs_copy, *d_obs_conditioning_copy;
+    double **d_obs_array_copy, **d_obs_conditioning_array_copy;
+    double *d_Cov_offset, *d_mu_offset;
+    double **d_Cov_offset_array, **d_mu_offset_array;
+    double **h_Cov_array;
+    double **h_obs_array_copy;
+    double **h_mu_offset_array;
+    double **h_Cov_offset_array;
+
+    // MAGMA memory for batch size  related
+    magma_int_t *h_lda, *d_lda, *h_ldda, *d_ldda;
+    magma_int_t *h_ldacon, *d_ldacon, *h_lddacon, *d_lddacon;
+    magma_int_t *d_const1;
+    magma_int_t *d_batchNum;
+    magma_int_t *batchNumAccum;
+    magma_int_t *batchNum;
+    magma_int_t *batchNumSquareAccum;
+    int total_size_dev_obs;
+
+    // MAGMA config
+    magma_queue_t queue;
+    magma_int_t *dinfo_magma;
+    magma_int_t *hinfo_magma;
+    int *max_num_cluster;
+
+    // MAGMA operations flags
+    char uplo;
+    char transA;
+    char transB;
+    char side;
+    char diag;
+    int align; // gpu config, Round up LDDA on GPU to multiple of align, default 32
+
+    // local theta for kernel in GPs
+    double sigma;
+    double beta;
+    double nu;
+    int kernel;
+    int num_params;
+    int seed;
+
+    // others
+    location *locations_new;
+    location *locations_con;
+    double *dot_result_h;
+    double *logdet_result_h;
+    int vecchia;
+    int iterations;            // optimization
+    int omp_threads;           // openmp
+    // double vecchia_time_total; // vecchia time monitoring
+    int distance_metric;       // 0 for euclidean; 1 for earth location. (real dataset)
+    int perf;                  // performance
+    double *localtheta;
+} llh_data;
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+    typedef struct Vecchia_opts
+    {
+
+        int omp_numthreads;
+
+        // local theta for kernel in GPs
+        double sigma;
+        double beta;
+        double nu;
+        double nugget;
+        // init
+        double sigma_init;
+        double beta_init;
+        double nu_init;
+        double nugget_init;
+        // bivariate
+        double sigma1;
+        double sigma2;
+        double alpha;
+        double nu1;
+        double nu2;
+
+        // performance test
+        int perf;
+
+        // vecchia
+        int vecchia;
+        int vecchia_cs;
+        int vecchia_bc;
+
+        // optimization
+        double tol;
+        int maxiter;
+        double lower_bound;
+        double upper_bound;
+
+        // extra config
+        int kernel;
+        int num_params;
+        int num_loc;
+
+        // bivariate
+        int p;
+
+        // k nearest neighbors
+        int knn;
+
+        // ordering
+        int randomordering;
+        int mortonordering;
+        int kdtreeordering;
+        int hilbertordering;
+        int mmdordering;
+
+        // irregular grid
+        int seed;
+
+        // gpu config, Round up LDDA on GPU to multiple of align, default 32
+        int align;
+        int device;
+
+        // BLAS operations
+        magma_uplo_t uplo;
+        magma_trans_t transA;
+        magma_trans_t transB;
+        magma_side_t side;
+        magma_diag_t diag;
+
+        // queue for default device
+        magma_queue_t queue;
+        magma_queue_t queues2[3]; // 2 queues + 1 extra NULL entry to catch errors
+
+#ifdef MAGMA_HAVE_CUDA
+        // handle for directly calling cublas
+        cublasHandle_t handle;
+#elif defined(MAGMA_HAVE_HIP)
+    hipblasHandle_t handle;
+#endif
+    } Vecchia_opts;
+
+    int parse_opts(int argc, char **argv, Vecchia_opts *opts);
+
+#ifdef __cplusplus
+}
+#endif
+
+extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
+{
+
+    //-------------------------------------//
+    // --------- problem setting  --------- //
+    //-------------------------------------//
+
+    // extra config
+    // 1: univaraite or 2: bivariate
+    opts->kernel = 1;
+    opts->num_params = 3;
+    opts->num_loc = 2000;
+    opts->p = 1;
+
+    // local theta for kernel in GPs
+    opts->sigma = 1.0;
+    opts->beta = 0.1;
+    opts->nu = 0.5;
+    opts->nugget = 0.0;
+
+    // local theta for kernel in GPs
+    opts->sigma_init = 0.01;
+    opts->beta_init = 0.01;
+    opts->nu_init = 0.01;
+    opts->nugget_init = 0.01;
+
+    // bivariate
+    opts->sigma1 = 0.1;
+    opts->sigma2 = 0.1;
+    opts->alpha = 0.1;
+    opts->nu1 = 0.1;
+    opts->nu2 = 0.1;
+
+    // k nearest neighbors
+    opts->knn = 1;
+
+    // random ordering
+    opts->randomordering = 0;
+    opts->mortonordering = 1;
+    opts->kdtreeordering = 0;
+    opts->hilbertordering = 0;
+    opts->mmdordering = 0;
+
+    // irregular locations generation
+    opts->seed = 0;
+
+    // performance test
+    opts->perf = 0;
+
+    // vecchia conditioning
+    opts->vecchia = 1;
+    opts->vecchia_cs = 100;
+    opts->vecchia_bc = 20;
+
+    //-------------------------------------//
+    // ----- BOBYQA optimization config  ---- //
+    //-------------------------------------//
+    // optimization setting
+    opts->tol = 1e-9;
+    opts->maxiter = 1000;
+    opts->lower_bound = 0.01;
+    opts->upper_bound = 2.;
+
+    //-------------------------------------//
+    // ----- host and device setting  ---- //
+    //-------------------------------------//
+    // openmp
+    opts->omp_numthreads = 40;
+
+    // gpu config, Round up LDDA on GPU to multiple of align, default 32
+    opts->align = 32;
+    opts->device = 0; // default is 0,
+
+    // BLAS
+    opts->uplo = MagmaLower;
+    opts->side = MagmaLeft;
+    opts->transA = MagmaNoTrans;
+    opts->diag = MagmaNonUnit;
+
+    int info;
+
+    for (int i = 1; i < argc; ++i)
+    {
+        //-------------------------------------//
+        // --------- problem setting  --------- //
+        //-------------------------------------//
+
+        // num_loc: number of locations
+        if (strcmp("--num_loc", argv[i]) == 0 && i + 1 < argc)
+        {
+            i++;
+            int num_loc;
+            info = sscanf(argv[i], "%d", &num_loc);
+            if (info == 1 && num_loc > 0)
+                opts->num_loc = num_loc;
+            else
+            {
+                fprintf(stderr, "error: --num_loc %s is invalid; ensure num_loc > 0, info=%d, num_loc=%d.\n",
+                        argv[i], info, num_loc);
+                exit(1);
+            }
+        }
+        // conditioning size
+        else if ((strcmp("--vecchia_cs", argv[i]) == 0) && i + 1 < argc)
+        {
+            i++;
+            int num;
+            info = sscanf(argv[i], "%d", &num);
+            if (info == 1 && num > 0)
+            {
+                opts->vecchia_cs = num;
+                opts->vecchia = 1;
+            }
+            else
+            {
+                fprintf(stderr, "error: --vecchia_cs %s is invalid; ensure only one number and 0 < vecchia_cs <= N.\n", argv[i]);
+                exit(1);
+            }
+        }
+        // block count / batchcount
+        else if ((strcmp("--vecchia_bc", argv[i]) == 0) && i + 1 < argc)
+        {
+            i++;
+            int num;
+            info = sscanf(argv[i], "%d", &num);
+            if (info == 1 && num > 0)
+                opts->vecchia_bc = num;
+            else
+            {
+                fprintf(stderr, "error: --vecchia_bc %s is invalid; ensure only one number and 0 < vecchia_bc <= N.\n", argv[i]);
+                exit(1);
+            }
+        }
+        // used for performance test
+        else if (strcmp("--perf", argv[i]) == 0)
+        {
+            opts->perf = 1;
+            opts->maxiter = 1;
+        }
+        // k nearest neighbors
+        else if (strcmp("--knn", argv[i]) == 0)
+        {
+            opts->knn = 1;
+        }
+        // ordering
+        else if (strcmp("--randomordering", argv[i]) == 0)
+        {
+            opts->randomordering = 1;
+            opts->mortonordering = 0;
+            opts->kdtreeordering = 0;
+            opts->hilbertordering = 0;
+            opts->mmdordering = 0;
+        }
+        else if (strcmp("--kdtreeordering", argv[i]) == 0)
+        {
+            opts->randomordering = 0;
+            opts->mortonordering = 0;
+            opts->kdtreeordering = 1;
+            opts->hilbertordering = 0;
+            opts->mmdordering = 0;
+        }
+        else if (strcmp("--hilbertordering", argv[i]) == 0)
+        {
+            opts->randomordering = 0;
+            opts->mortonordering = 0;
+            opts->kdtreeordering = 0;
+            opts->hilbertordering = 1;
+            opts->mmdordering = 0;
+        }
+        else if (strcmp("--mmdordering", argv[i]) == 0)
+        {
+            opts->randomordering = 0;
+            opts->mortonordering = 0;
+            opts->kdtreeordering = 0;
+            opts->hilbertordering = 0;
+            opts->mmdordering = 1;
+        }
+        // kernels
+        else if ((strcmp("--kernel", argv[i]) == 0) && i + 1 < argc)
+        {
+            i++;
+            char *kernel_str = argv[i];
+
+            if (strcmp(kernel_str, "univariate_matern_stationary_no_nugget") == 0)
+            {
+                fprintf(stderr, "You are using the Matern Kernel (sigma^2, range, smooth)!\n");
+                opts->kernel = 1;     // You can change this value as needed
+                opts->num_params = 3; // Set appropriate values for the 'matern' kernel
+                opts->p = 1;          // You can modify this as per the requirement for 'matern'
+            }
+            else if (strcmp(kernel_str, "univariate_powexp_stationary_no_nugget") == 0)
+            {
+                fprintf(stderr, "You are using the Power exponential Kernel (sigma^2, range, smooth)!\n");
+                opts->kernel = 2;     // Change as per your requirement for 'powexp'
+                opts->num_params = 3; // Set appropriate values for the 'powexp' kernel
+                opts->p = 1;          // Modify as needed for 'powexp'
+            }
+            else if (strcmp(kernel_str, "univariate_powexp_nugget_stationary") == 0)
+            {
+                fprintf(stderr, "You are using the Power exponential Kernel with nugget (sigma^2, range, smooth, nugget)!\n");
+                opts->kernel = 3;     //
+                opts->num_params = 4; //
+                opts->p = 1;          // Modify as needed for 'powexp'
+            }
+            else
+            {
+                fprintf(stderr, "Unsupported kernel type: %s\n", kernel_str);
+                exit(1);
+            }
+        }
+        // ture parameters
+        else if (strcmp("--ikernel", argv[i]) == 0 && i + 1 < argc)
+        {
+            i++;
+            double a1 = -1, a2 = -1, a3 = -1, a4 = -1; // Initialize with default values indicating 'unknown'
+            char s1[10], s2[10], s3[10], s4[10];       // Arrays to hold the string representations
+            // Parse the input into string buffers
+            int info = sscanf(argv[i], "%9[^:]:%9[^:]:%9[^:]:%9[^:]", s1, s2, s3, s4);
+            if (info < 3 || info > 4)
+            {
+                printf("Other kernels have been developing on the way!");
+                exit(0);
+            }
+            // Check and convert each value
+            if (strcmp(s1, "?") != 0)
+                a1 = atof(s1);
+            if (strcmp(s2, "?") != 0)
+                a2 = atof(s2);
+            if (strcmp(s3, "?") != 0)
+                a3 = atof(s3);
+            if (info == 4)
+            {
+                if (strcmp(s4, "?") != 0)
+                    a4 = atof(s4);
+            }
+            // Assign values to opts if they are not unknown
+            if (a1 != -1)
+                opts->sigma = a1;
+            if (a2 != -1)
+                opts->beta = a2;
+            if (a3 != -1)
+                opts->nu = a3;
+            if (info == 4)
+            {
+                if (a4 != -1)
+                    opts->nugget = a4;
+            }
+        }
+        // initi parameters
+        else if (strcmp("--kernel_init", argv[i]) == 0 && i + 1 < argc)
+        {
+            i++;
+            double a1 = -1, a2 = -1, a3 = -1, a4 = -1; // Initialize with default values indicating 'unknown'
+            char s1[10], s2[10], s3[10], s4[10];       // Arrays to hold the string representations
+            // Parse the input into string buffers
+            int info = sscanf(argv[i], "%9[^:]:%9[^:]:%9[^:]:%9[^:]", s1, s2, s3, s4);
+            if (info < 3 || info > 4)
+            {
+                printf("Other kernels have been developing on the way!");
+                exit(0);
+            }
+            // Check and convert each value
+            if (strcmp(s1, "?") != 0)
+                a1 = atof(s1);
+            if (strcmp(s2, "?") != 0)
+                a2 = atof(s2);
+            if (strcmp(s3, "?") != 0)
+                a3 = atof(s3);
+            if (info == 4)
+            {
+                if (strcmp(s4, "?") != 0)
+                    a4 = atof(s4);
+            }
+            // Assign values to opts if they are not unknown
+            if (a1 != -1)
+                opts->sigma_init = a1;
+            if (a2 != -1)
+                opts->beta_init = a2;
+            if (a3 != -1)
+                opts->nu_init = a3;
+            if (info == 4)
+            {
+                if (a4 != -1)
+                    opts->nugget_init = a4;
+            }
+        }
+        // iiregular locations generation seeds
+        else if ((strcmp("--seed", argv[i]) == 0) && i + 1 < argc)
+        {
+            i++;
+            int seed;
+            info = sscanf(argv[i], "%d", &seed);
+            opts->seed = seed;
+        }
+
+        //-------------------------------------//
+        // ----- host and device setting  ---- //
+        //-------------------------------------//
+        else if (strcmp("--omp_threads", argv[i]) == 0 && i + 1 < argc)
+        {
+            opts->omp_numthreads = atoi(argv[++i]);
+        }
+
+        //-------------------------------------//
+        // ----- BOBYQA optimization config  ---- //
+        //-------------------------------------//
+        else if ((strcmp("--maxiter", argv[i]) == 0) && i + 1 < argc)
+        {
+            i++;
+            int maxiter;
+            info = sscanf(argv[i], "%d", &maxiter);
+            if (info == 1 && maxiter > 0)
+            {
+                opts->maxiter = maxiter;
+            }
+            else
+            {
+                fprintf(stderr, "error: --maxiter %s is invalid; ensure maxiter > 0 and be integer.\n", argv[i]);
+                exit(1);
+            }
+        }
+        else if ((strcmp("--tol", argv[i]) == 0) && i + 1 < argc)
+        {
+            i++;
+            int tol;
+            info = sscanf(argv[i], "%d", &tol);
+            if (info == 1 && tol > 0)
+            {
+                opts->tol = pow(10, -tol);
+            }
+            else
+            {
+                fprintf(stderr, "error: --tol %s is invalid; ensure tol > 0.\n", argv[i]);
+                exit(1);
+            }
+        }
+        else if ((strcmp("--lower_bound", argv[i]) == 0) && i + 1 < argc)
+        {
+            i++;
+            double lower_bound;
+            info = sscanf(argv[i], "%lf", &lower_bound);
+            if (info == 1 && lower_bound > 0)
+            {
+                opts->lower_bound = lower_bound;
+            }
+            else
+            {
+                fprintf(stderr, "error: --lower_bound %s is invalid; ensure lower_bound > 0.\n", argv[i]);
+                exit(1);
+            }
+        }
+        else if ((strcmp("--upper_bound", argv[i]) == 0) && i + 1 < argc)
+        {
+            i++;
+            double upper_bound;
+            info = sscanf(argv[i], "%lf", &upper_bound);
+            if (info == 1 && upper_bound < 100)
+            {
+                opts->upper_bound = upper_bound;
+            }
+            else
+            {
+                fprintf(stderr, "error: --upper_bound %s is invalid; ensure upper_bound < 100. (Or you fix 100 in opts file)\n", argv[i]);
+                exit(1);
+            }
+        }
+
+        // ----- usage
+        else if (strcmp("-h", argv[i]) == 0 || strcmp("--help", argv[i]) == 0)
+        {
+            fprintf(stderr, "Helper doc is to be done.\n");
+            exit(0);
+        }
+        else
+        {
+            fprintf(stderr, "error: unrecognized option %s\n", argv[i]);
+            exit(1);
+        }
+    }
+
+// magma queuex
+#if defined(MAGMA_HAVE_CUDA) || defined(MAGMA_HAVE_HIP)
+    magma_setdevice(opts->device);
+#endif
+
+    // create queues on this device
+    // 2 queues + 1 extra NULL entry to catch errors
+    magma_queue_create(opts->device, &opts->queues2[0]);
+    magma_queue_create(opts->device, &opts->queues2[1]);
+    opts->queues2[2] = NULL;
+
+    opts->queue = opts->queues2[0];
+
+#if defined(MAGMA_HAVE_HIP)
+    // handle for directly calling hipblas
+    opts->handle = magma_queue_get_hipblas_handle(opts->queue);
+#elif defined(MAGMA_HAVE_CUDA)
+    // handle for directly calling cublas
+    opts->handle = magma_queue_get_cublas_handle(opts->queue);
+#else
+#error "unknown platform"
+#endif
+
+    return 1;
+} // end parse_opts
+
+#endif /* VECCHIA_HELPER_H */

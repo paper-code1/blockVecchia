@@ -1,0 +1,8 @@
+bin/
+trash/
+log/
+obj/
+
+*.ipynb
+*.txt
+*.sh
