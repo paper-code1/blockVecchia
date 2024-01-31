@@ -2,7 +2,11 @@ bin/
 trash/
 log/
 obj/
+.vscode/
+fig/
 
 *.ipynb
 *.txt
-*.sh
+test_kl.sh
+test_llh.sh
+test_simulation.sh

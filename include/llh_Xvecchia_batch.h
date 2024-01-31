@@ -387,7 +387,8 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
         batchCount, queue);
     // for (int i = 0; i < batchCount; i++)
     // {
-    //     printMatrixGPU(h_lda[i], 1, h_obs_array_copy[i], h_ldda[i], i);
+    //     // printMatrixGPU(h_lda[i], 1, h_obs_array_copy[i], h_ldda[i], i);
+    //     // printMatrixGPU(h_lda[i], 1, h_obs_array_copy[i], h_ldda[i], i);
     // }
     // determinant
     for (int i = 0; i < batchCount; ++i)
@@ -399,6 +400,7 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
     // Dot scalar Z_new^T Z_new
     for (int i = 0; i < batchCount; i++)
     {
+        // printVecGPU(h_lda[i], 1, h_obs_array_copy[i], h_lda[i], i);
         dot_result_h[i] = magma_dnrm2(h_lda[i],
                                       h_obs_array_copy[i],
                                       1, queue);

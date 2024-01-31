@@ -240,7 +240,7 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
     // vecchia conditioning
     opts->vecchia = 1;
     opts->vecchia_cs = 100;
-    opts->vecchia_bc = 20;
+    opts->vecchia_bc = 200;
 
     //-------------------------------------//
     // ----- BOBYQA optimization config  ---- //
@@ -249,7 +249,7 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
     opts->tol = 1e-9;
     opts->maxiter = 1000;
     opts->lower_bound = 0.01;
-    opts->upper_bound = 2.;
+    opts->upper_bound = 3.;
 
     //-------------------------------------//
     // ----- host and device setting  ---- //
@@ -296,14 +296,14 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
             i++;
             int num;
             info = sscanf(argv[i], "%d", &num);
-            if (info == 1 && num > 0)
+            if (info == 1 && num >= 0)
             {
                 opts->vecchia_cs = num;
                 opts->vecchia = 1;
             }
             else
             {
-                fprintf(stderr, "error: --vecchia_cs %s is invalid; ensure only one number and 0 < vecchia_cs <= N.\n", argv[i]);
+                fprintf(stderr, "error: --vecchia_cs %s is invalid; ensure only one number and 0 <= vecchia_cs <= N.\n", argv[i]);
                 exit(1);
             }
         }

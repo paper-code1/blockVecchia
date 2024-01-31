@@ -2481,7 +2481,6 @@ kmeans(int nclusters, int nrows, int ncolumns, double** data, int** mask,
             /* Find the center */
             getclustermeans(nclusters, nrows, ncolumns, data, mask, tclusterid,
                             cdata, cmask, transpose);
-
             for (i = 0; i < nelements; i++) {
                 double distance;
                 /* Calculate the distances */
@@ -2517,8 +2516,8 @@ kmeans(int nclusters, int nrows, int ncolumns, double** data, int** mask,
             *error = total;
             break;
         }
-
         for (i = 0; i < nclusters; i++) mapping[i] = -1;
+
         for (i = 0; i < nelements; i++) {
             j = tclusterid[i];
             k = clusterid[i];

@@ -1,18 +1,17 @@
 /**
- * @copyright (c) 2012- King Abdullah University of Science and
+ * @copyright (c) 2024- King Abdullah University of Science and
  *                      Technology (KAUST). All rights reserved.
  **/
 
 /**
- * @file testing/batch_triangular/test_Xtrsm_batch.cpp
+ * @file 
 
- * KBLAS is a high performance CUDA library for subset of BLAS
- *    and LAPACK routines optimized for NVIDIA GPUs.
- * KBLAS is provided by KAUST.
+ * 
  *
- * @version 3.0.0
- * @author Ali Charara
- * @date 2018-11-14
+ *
+ * @version 0.0.0
+ * @author Qilong Pan
+ * @date 2024-03-14
  **/
 
 #include <stdio.h>
