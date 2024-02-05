@@ -31,7 +31,7 @@ typedef struct llh_data
     size_t batchCount;
 
     // MAGMA memory allocation in advanace (host)
-    double *h_Cov, *h_obs;
+    double *h_Cov, *h_obs_new;
     double *h_Cov_conditioning, *h_Cov_cross, *h_obs_conditioning;
     double **h_Cov_conditioning_array;
     double **h_Cov_cross_array;
@@ -65,7 +65,6 @@ typedef struct llh_data
     magma_queue_t queue;
     magma_int_t *dinfo_magma;
     magma_int_t *hinfo_magma;
-    int *max_num_cluster;
 
     // MAGMA operations flags
     char uplo;
@@ -86,7 +85,7 @@ typedef struct llh_data
     // others
     location *locations_new;
     location *locations_con;
-    double *dot_result_h;
+    double *norm2_result_h;
     double *logdet_result_h;
     int vecchia;
     int iterations;            // optimization

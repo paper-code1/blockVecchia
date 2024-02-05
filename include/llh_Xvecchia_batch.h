@@ -13,7 +13,6 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
     int *dinfo_magma = data->dinfo_magma;
     int *hinfo_magma = data->hinfo_magma;
     magma_queue_t queue = data->queue;
-    int *max_num_cluster = data->max_num_cluster;
     // size and etc
     int omp_threads = data->omp_threads;
     size_t batchCount = data->batchCount;
@@ -36,7 +35,7 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
     // matrix and vectors
     double *h_Cov = data->h_Cov;
     double *d_Cov = data->d_Cov;
-    double *h_obs = data->h_obs;
+    double *h_obs_new = data->h_obs_new;
     double *d_obs = data->d_obs;
     double *h_Cov_conditioning = data->h_Cov_conditioning;
     double *d_Cov_conditioning = data->d_Cov_conditioning;
@@ -113,7 +112,7 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
                   loc_batch, // starting of the locations_new
                   loc_batch,
                   localtheta, data->distance_metric);
-        // printVectorCPU(data->Cm, data->h_obs, data->ldc, i);
+        // printVectorCPU(data->Cm, data->h_obs_new, data->ldc, i);
         free(loc_batch);
     }
     // h_Cov_cross: \sigma_{12} and h_Cov_conditioning: \sigma_{22}
@@ -122,7 +121,7 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
 #pragma omp parallel for
         for (size_t i = 0; i < batchCount; i++)
         {
-            // printVectorCPU(data->bs, data->h_obs, data->ldc, 0);
+            // printVectorCPU(data->bs, data->h_obs_new, data->ldc, 0);
             // for example, p(y1|y2), the locations_new of y2 is the loc_batch_con
             location *loc_batch_con = (location *)malloc(sizeof(location));
             location *loc_batch = (location *)malloc(sizeof(location));
@@ -155,6 +154,9 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
     //------------------Memory set/get/...-----------------------//
     //-----------------------------------------------------------//
     double *h_Cov_tmp, *d_Cov_tmp;
+    // copy the (conditioning) observations, which is overwritten
+    // for each iterations
+    magma_dcopy(h_lddacon[0] * batchCount, d_obs_conditioning, 1, d_obs_conditioning_copy, 1, queue);
     magma_dcopy(total_size_dev_obs, d_obs, 1, d_obs_copy, 1, queue);
 
     h_Cov_tmp = h_Cov;
@@ -224,13 +226,13 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
         // printf("[info] Starting Cholesky decomposition. \n");
 
         // gpu_time = magma_sync_wtime(queue);
-        
+
         info = magma_dpotrf_vbatched(
             MagmaLower, d_ldacon,
             d_Cov_conditioning_array, d_lddacon,
             dinfo_magma, batchCount,
             queue);
-        
+
         // gpu_time = magma_sync_wtime(queue) - gpu_time;
         // gpu_perf = gflops / gpu_time;
 
@@ -256,9 +258,9 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
             d_Cov_conditioning_array, d_lddacon,
             d_Cov_cross_array, d_lddacon,
             batchCount, queue);
-        // for (int i = 0; i < batchCount; i++)
+        // for (int i = 0; i < 1; i++) // batchCount
         // {
-        //     printMatrixGPU(h_ldacon[i], h_ldacon[i], h_Cov_conditioning_array[i], h_lddacon[i], i);
+        //     // printMatrixGPU(h_ldacon[i], h_ldacon[i], h_Cov_conditioning_array[i], h_lddacon[i], i);
         //     printMatrixGPU(h_ldacon[i], 1, h_obs_conditioning_array_copy[i], h_lddacon[i], i);
         // }
         magmablas_dtrsm_vbatched(
@@ -267,10 +269,8 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
             d_Cov_conditioning_array, d_lddacon,
             d_obs_conditioning_array_copy, d_lddacon,
             batchCount, queue);
-        // for (int i = 0; i < batchCount; i++)
-        // {
+        // for (int i = 0; i < 1; i++) // batchCount
         //     printMatrixGPU(h_ldacon[i], 1, h_obs_conditioning_array_copy[i], h_lddacon[i], i);
-        // }
 
         // printf("[info] Finished triangular solver. \n");
         /*
@@ -291,22 +291,28 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
                                  d_Cov_offset_array, d_ldda,
                                  batchCount,
                                  queue);
-        
-        // for (int i = 1; i < batchCount; i++)
+
+        // for (int i = 1; i < 10; i++)
         // {
-        //     printMatrixGPU(h_lda[i], h_lda[i], h_Cov_cross_array[i],  h_ldda[i], i);
-        //     printMatrixGPU(h_lda[i], h_lda[i], h_Cov_offset_array[i],  h_ldda[i], i);
+        //     // printMatrixGPU(h_lda[i], h_lda[i], h_Cov_cross_array[i],  h_ldda[i], i);
+        //     // printMatrixGPU(h_lda[i], h_lda[i], h_Cov_offset_array[i],  h_ldda[i], i);
+        //     printVecGPU(h_ldacon[i], 1, h_obs_conditioning_array_copy[i], h_lddacon[i], i);
         // }
         // \Sigma_offset^T %*% z_offset
-        magmablas_dgemv_vbatched_max_nocheck(MagmaTrans, // here is the bug with magma
-                                 d_lda, d_const1,
-                                 1.,
+        // GEMV -> GEMM (GEMV is supposed to be better, but there is unknown issues with the API)
+        magmablas_dgemm_vbatched(MagmaTrans, MagmaNoTrans,
+                                 d_lda, d_const1, d_ldacon,
+                                 1,
                                  d_Cov_cross_array, d_lddacon,
-                                 d_obs_conditioning_array, d_lddacon,
-                                 0.,
-                                 d_mu_offset_array, d_ldda, 
-                                 batchCount, max_num_cluster[0], 1, queue);
-        
+                                 d_obs_conditioning_array_copy, d_lddacon,
+                                 0,
+                                 d_mu_offset_array, d_ldda,
+                                 batchCount,
+                                 queue);
+        // for (int i = 1; i < 10; i++)
+        // {
+        //     printVecGPU(h_lda[i], 1, h_mu_offset_array[i], h_ldda[i], i);
+        // }
         /*TODO non-data->strided*/
         // printf("[info] Finished GEMM and GEMV. \n");
         /*
@@ -343,11 +349,15 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
                              queue);
             // printf("The results before TRSM \n");
             // printMatrixGPU(h_lda[i], h_lda[i], h_Cov_array[i], h_ldda[i], i);
+            // if (i < 10)
+            //     printMatrixGPU(h_lda[i], 1, h_obs_array_copy[i], h_ldda[i], i);
             magmablas_dgeadd(h_lda[i], 1,
                              -1,
                              h_mu_offset_array[i], h_ldda[i],
                              h_obs_array_copy[i], h_ldda[i],
                              queue);
+            // if (i < 10)
+            //     printMatrixGPU(h_lda[i], 1, h_obs_array_copy[i], h_ldda[i], i);
         }
     }
     // */conditioning part, \sigma_{12} inv (\sigma_{22}) \sigma_{21}
@@ -360,61 +370,72 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
     //-----------------------------------------------------//
     // intermidiate results
     double *logdet_result_h = data->logdet_result_h;
-    double *dot_result_h = data->dot_result_h;
+    double *norm2_result_h = data->norm2_result_h;
     int info = 0;        // debug for potrf
     double llk = 0;      // log-likelihood
     double _llk_tmp = 0; // debug for log-likelihood
 
     // cholesky
-    
     info = magma_dpotrf_vbatched(
         MagmaLower, d_batchNum,
         d_Cov_array, d_ldda,
         dinfo_magma, batchCount,
         queue);
     // triangular solution: L Z_new <- Z_old
-    // for (int i = 0; i < batchCount; i++)
+    // for (int i = 0; i < 10; i++)
     // {
     //     printMatrixGPU(h_lda[i], h_lda[i], h_Cov_array[i], h_ldda[i], i);
     //     printMatrixGPU(h_lda[i], 1, h_obs_array_copy[i], h_ldda[i], i);
     // }
-    
+
     magmablas_dtrsm_vbatched(
         MagmaLeft, MagmaLower, MagmaNoTrans, MagmaNonUnit,
         d_batchNum, d_const1, 1.,
         d_Cov_array, d_ldda,
         d_obs_array_copy, d_ldda,
         batchCount, queue);
-    // for (int i = 0; i < batchCount; i++)
+    // for (int i = 0; i < 10; i++)
     // {
-    //     // printMatrixGPU(h_lda[i], 1, h_obs_array_copy[i], h_ldda[i], i);
-    //     // printMatrixGPU(h_lda[i], 1, h_obs_array_copy[i], h_ldda[i], i);
+    //     printMatrixGPU(h_lda[i], 1, h_obs_array_copy[i], h_ldda[i], i);
     // }
-    // determinant
-    for (int i = 0; i < batchCount; ++i)
+    for (int i = 1; i < batchCount; ++i)
     {
+        // determinant
         core_Xlogdet<T>(h_Cov_array[i], //
                         batchNum[i], h_ldda[i],
                         &(logdet_result_h[i]));
+        // Dot scalar Z_new^T Z_new
+        norm2_result_h[i] = magma_dnrm2(h_lda[i],
+                                        h_obs_array_copy[i],
+                                        1, queue);
     }
-    // Dot scalar Z_new^T Z_new
-    for (int i = 0; i < batchCount; i++)
+
+    if (data->num_loc < 2 * batchCount)
     {
+        // for classic Vecchia
+        // the first batch is the joint log-likelihood P(Z0)
+        // its related computation has already been calculated in
+        // vecchia conditioning
+        core_Xlogdet<T>(h_Cov_conditioning_array[0], //
+                        cs, h_lddacon[0],
+                        &(logdet_result_h[0]));
         // printVecGPU(h_lda[i], 1, h_obs_array_copy[i], h_lda[i], i);
-        dot_result_h[i] = magma_dnrm2(h_lda[i],
-                                      h_obs_array_copy[i],
-                                      1, queue);
+        norm2_result_h[0] = magma_dnrm2(cs, h_obs_conditioning_array_copy[0], 1, queue);
+        batchNum[0] = cs;
     }
 
     for (int k = 0; k < batchCount; k++)
     {
-        _llk_tmp = -(dot_result_h[k] * dot_result_h[k] + logdet_result_h[k] + batchNum[k] * log(2 * PI)) * 0.5;
+        _llk_tmp = -(norm2_result_h[k] * norm2_result_h[k] + logdet_result_h[k] + batchNum[k] * log(2 * PI)) * 0.5;
         llk += _llk_tmp;
-        // printf("%dth log determinant is % lf\n", k + 1, logdet_result_h[k]);
-        // printf("%dth dot product is % lf\n", k + 1, dot_result_h[k] * dot_result_h[k]);
-        // printf("%dth pi is % lf\n", k + 1, batchNum[k] * log(2 * PI));
-        // printf("%dth log likelihood is % lf\n", k + 1, _llk_tmp);
-        // printf("-------------------------------------\n");
+        // fprintf(stderr, "%dth location is %lf %lf \n", k, data->locations_new->x[cs + k], data->locations_new->y[cs + k]);
+        // fprintf(stderr, "%dth log determinant is % lf\n", k, logdet_result_h[k]);
+        // fprintf(stderr, "%dth dot product is % lf\n", k, norm2_result_h[k] * norm2_result_h[k]);
+        // fprintf(stderr, "%dth pi is % lf\n", k, batchNum[k] * log(2 * PI));
+        // fprintf(stderr, "%dth log likelihood is % lf\n", k, _llk_tmp);
+        // fprintf(stderr, "-------------------------------------\n");
+        // if (k == 10)
+        //     break;
     }
     // printf("[info] Independent computing is finished! \n");
     // printf("[Info] The time for independent computing is %lf seconds\n", indep_time);

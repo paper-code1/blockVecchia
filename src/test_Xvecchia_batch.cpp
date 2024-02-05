@@ -4,9 +4,9 @@
  **/
 
 /**
- * @file 
+ * @file
 
- * 
+ *
  *
  *
  * @version 0.0.0
@@ -30,25 +30,22 @@
 // magma helper file
 #include <magma_v2.h>
 
-// // KBLAS helper
-// #include "testing_helper.h"
-// #include "Xblas_core.ch"
+// kmeans
+#include "kmeans.h"
 
 // Used for llh
-#include "../include/cluster.h"
-#include "../include/ckernel.h"
-#include "../include/vecchia_helper_method.h"
-#include "../include/flops.h"
+#include "ckernel.h"
+#include "vecchia_helper_method.h"
+#include "flops.h"
 // used for vecchia
 extern "C"
 {
-#include "../include/vecchia_helper_data.h"
+#include "vecchia_helper_data.h"
 }
 // used for nearest neighbor
-#include "../include/nearest_neighbor.h"
-// this is not formal statement and clarification, only for convenience
-#include "../include/utils.h"
-#include "../include/llh_Xvecchia_batch.h"
+#include "nearest_neighbor.h"
+#include "utils.h"
+#include "llh_Xvecchia_batch.h"
 
 template <class T>
 int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
@@ -77,7 +74,7 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     T **h_obs_array = NULL, **d_obs_array = NULL;
     T **h_obs_array_copy = NULL, **d_obs_array_copy = NULL;
     // intermidiate results
-    T *dot_result_h;
+    T *norm2_result_h;
     T *logdet_result_h;
     double *h_obs_tmp, *d_obs_tmp;
 
@@ -96,19 +93,22 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     T **h_obs_conditioning_array = NULL, **d_obs_conditioning_array = NULL;
     T **h_obs_conditioning_array_copy = NULL, **d_obs_conditioning_array_copy = NULL;
 
-    //
+    // kmeans
     long long nclusters;
-    if (opts.num_loc < 2 * opts.vecchia_bc){
-        // classic vecchia 
+    std::vector<Point> points;
+    std::vector<Point> centroids;
+    if (opts.num_loc < 2 * opts.vecchia_bc)
+    {
+        // classic vecchia
         nclusters = opts.num_loc;
-    }else{
-        // cluster vecchia 
+    }
+    else
+    {
+        // cluster vecchia
         nclusters = opts.vecchia_bc;
     }
     long long batchCount;
-    int *batchIndex, *batchNum, *batchNumAccum, *batchNumSquareAccum;
-    int *clusterid, *clusterNum, *max_num_cluster;
-    double **centroid;
+    int *batchIndex, *batchNum, *batchNumAccum, *batchNumSquareAccum, *clusterNum;
     int cs = opts.vecchia_cs;
     // Set initial guess
     double localtheta_initial[opts.num_params]; // Initial guess
@@ -167,11 +167,16 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     else
     {
         /*used for the simulated data and real applications*/
-        std::string xy_path = "./trash/synthetic_ds/LOC_640_1";
-        std::string z_path = "./trash/synthetic_ds/Z_640_1";
+        // std::string xy_path = "./trash/synthetic_ds/LOC_640_1";
+        // std::string z_path = "./trash/synthetic_ds/Z_640_1";
         /*simulations*/
-        // std::string xy_path = "./simu_ds/20ks_" + std::to_string(opts.beta) + "_" + std::to_string(opts.nu) + "/LOC_20000_univariate_matern_stationary_" + std::to_string(opts.seed);
-        // std::string z_path = "./simu_ds/20ks_" + std::to_string(opts.beta) + "_" + std::to_string(opts.nu) + "/Z1_20000_univariate_matern_stationary_" + std::to_string(opts.seed);
+        std::string xy_path = "./simu_ds/20ks_" + std::to_string(opts.beta) + "_" + std::to_string(opts.nu) + "/LOC_20000_univariate_matern_stationary_" + std::to_string(opts.seed);
+        std::string z_path = "./simu_ds/20ks_" + std::to_string(opts.beta) + "_" + std::to_string(opts.nu) + "/Z1_20000_univariate_matern_stationary_" + std::to_string(opts.seed);
+
+        // Print the z_path string
+        std::cout << z_path << std::endl;
+        // Print the z_path string
+        std::cout << xy_path << std::endl;
         data.distance_metric = 0;
         locations = loadXYcsv(xy_path, opts.num_loc);
         loadObscsv<T>(z_path, opts.num_loc, h_obs);
@@ -190,37 +195,31 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
         }
     }
 
-    // locations: 2D spatial location
-    // h_obs: obeservations for each location
-    // input: locations, nclusters
-    // output: clusters
-    clusterid = (int *)malloc(opts.num_loc * sizeof(int));
-    clusterNum = (int *)calloc(nclusters, sizeof(int));
-    max_num_cluster = (int *)calloc(1, sizeof(int));
-    centroid = (double **)malloc(nclusters * sizeof(double *));
-    for (int i = 0; i < nclusters; ++i)
-        centroid[i] = (double *)malloc(2 * sizeof(double));
-    
+    // BV or CV
     if (opts.num_loc < 2 * opts.vecchia_bc)
     {
         // classic vecchia
         fprintf(stderr, "You are using the classic Vecchia!\n");
+        points = convertToPoints(locations, opts.num_loc);
+        clusterNum = (int *)calloc(nclusters, sizeof(int));
         for (int i = 0; i < opts.num_loc; i++)
         {
-            clusterid[i] = i;
             clusterNum[i] = 1;
-            max_num_cluster[0] = 1;
-            centroid[i][0] = locations->x[i];
-            centroid[i][1] = locations->y[i];
+            points[i].cluster = i;
         }
+        centroids = points;
     }
     else
     {
         // cluster vecchia
         fprintf(stderr, "You are using the cluster Vecchia!\n");
-        clustering_2D(nclusters, opts.num_loc,
-                      locations, clusterid, centroid,
-                      clusterNum, max_num_cluster, opts.seed);
+        // transform the locations into points
+        points = convertToPoints(locations, opts.num_loc);
+        // init the centroids
+        centroids = random_initializer(points, nclusters, opts.seed);
+        // kmeans, 1000 here is default for kmeans iterations
+        kmean_par(points, centroids, 1000, nclusters, opts.omp_numthreads);
+        clusterNum = countPointsInClusters(points);
     }
     fprintf(stderr, "--------------Clustering Done-----------------\n");
     //-------------------------------------------------------------//
@@ -228,9 +227,9 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     //-------------------------------------------------------------//
     for (int i = 0; i < nclusters; ++i)
     {
-        locsCentroid->x[i] = centroid[i][0];
-        locsCentroid->y[i] = centroid[i][1];
-        permIndex[i] = i;
+        locsCentroid->x[i] = centroids[i].coordinates[0];
+        locsCentroid->y[i] = centroids[i].coordinates[1];
+        permIndex[i] = centroids[i].cluster;
     }
 
     // Ordering for locations and observations
@@ -267,14 +266,16 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
 
     // find the reordered index
     // array of permIndex stores the reordered index, such as permIndex = 12, 3, 4,...
-    reorderIndex(locsCentroid, centroid, permIndex, nclusters);
+    reorderIndex(locsCentroid, centroids, permIndex, nclusters);
 
     // the first batch will calcuate full llh as a whole
     // the locations and clusters are reconstructed
     firstbatch(nclusters, clusterNum, permIndex, firstClusterSize, firstClusterCount, cs);
     assert(firstClusterSize[0] > 0 && firstClusterCount[0] > 0);
     batchCount = nclusters - firstClusterCount[0] + 1;
-    cluster_combine(firstClusterCount, firstClusterSize, opts.num_loc, clusterid, permIndex, clusterNum);
+    // the first batch will combine (more than) 1 cluster(s) together,
+    // permIndex and clusterNum is starting from firstClusterSize[0]
+    cluster_combine(firstClusterCount, firstClusterSize, opts.num_loc, points, permIndex, clusterNum);
 
     // (accmulated) number of batch
     batchIndex = permIndex + firstClusterCount[0] - 1;
@@ -295,12 +296,9 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
         batchNumSquareAccum[i] += batchNumSquareAccum[i - 1] + batchNum[i - 1] * batchNum[i - 1];
     }
     assert(batchNumAccum[batchCount] == opts.num_loc);
-    cluster_to_batch(opts.num_loc, batchCount, batchNum, batchNumAccum, batchIndex, locations, h_obs, locations_new, h_obs_new, clusterid, locsCentroid);
+    // reorder the cluster based on the batchIndex
+    cluster_to_batch(opts.num_loc, batchCount, batchNum, batchNumAccum, batchIndex, locations, h_obs, locations_new, h_obs_new, points, locsCentroid);
     // clusterid will be not used anymore, it has been change in place
-
-    // update
-    if (max_num_cluster[0] < firstClusterSize[0])
-        max_num_cluster[0] = firstClusterSize[0];
     fprintf(stderr, "--------------Reordering Done-----------------\n");
 
     //-------------------------------------------------------------//
@@ -396,7 +394,8 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
         h_obs_array[i] = h_obs_array[i - 1] + h_ldda[i - 1];
         h_obs_array_copy[i] = h_obs_array_copy[i - 1] + h_ldda[i - 1];
     }
-    h_obs_tmp = h_obs;
+    h_obs_tmp = h_obs_new;
+    // for (int i=0; i< 100; i++) fprintf(stderr, "%lf ", h_obs_new[i]);
     d_obs_tmp = d_obs;
     for (int i = 0; i < batchCount; i++)
     {
@@ -485,7 +484,7 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     }
 
     // intermidiate results
-    TESTING_CHECK(magma_dmalloc_cpu(&dot_result_h, batchCount));
+    TESTING_CHECK(magma_dmalloc_cpu(&norm2_result_h, batchCount));
     TESTING_CHECK(magma_dmalloc_cpu(&logdet_result_h, batchCount));
     fprintf(stderr, "--------------Memory Allocate Done-----------------\n");
     //-------------------------------------------------------------//
@@ -494,7 +493,7 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
 
     // MAGMA memory allocation in advanace (host)
     data.h_Cov = h_Cov;
-    data.h_obs = h_obs;
+    data.h_obs_new = h_obs_new;
     data.h_ldda = h_ldda;
     data.h_lda = h_lda;
     data.h_obs_array_copy = h_obs_array_copy;
@@ -525,12 +524,11 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     // covariance or vector size
     data.locations_new = locations_new;
     data.logdet_result_h = logdet_result_h;
-    data.dot_result_h = dot_result_h;
+    data.norm2_result_h = norm2_result_h;
     // MAGMA config
     data.queue = opts.queue;
     data.hinfo_magma = hinfo_magma;
     data.dinfo_magma = dinfo_magma;
-    data.max_num_cluster = max_num_cluster;
     // kernel related
     data.sigma = opts.sigma;
     data.beta = opts.beta;
@@ -620,20 +618,14 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     nlopt_destroy(opt);
     fprintf(stderr, "Done! \n");
 
-    if (opts.vecchia)
-    {
-        free(locations_con->x);
-        free(locations_con->y);
-        magma_free(d_Cov_conditioning);
-        magma_free(d_Cov_cross);
-        magma_free(d_obs_conditioning);
-        magma_free(d_obs_conditioning_copy);
-        magma_free(d_Cov_offset);
-        magma_free(d_mu_offset);
-        magma_free_cpu(h_Cov_conditioning);
-        magma_free_cpu(h_Cov_cross);
-        magma_free_cpu(h_obs_conditioning);
-    }
+    free(locations_con->x);
+    free(locations_con->y);
+    magma_free(d_Cov_conditioning);
+    magma_free(d_Cov_cross);
+    magma_free(d_obs_conditioning);
+    magma_free(d_obs_conditioning_copy);
+    magma_free(d_Cov_offset);
+    magma_free(d_mu_offset);
     magma_free(d_Cov_conditioning_array);
     magma_free(d_Cov_cross_array);
     magma_free(d_Cov_offset_array);
@@ -643,9 +635,11 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     magma_free(d_Cov_array);
     magma_free(d_obs_array);
     magma_free(d_obs_array_copy);
+    magma_free_cpu(h_Cov_conditioning);
+    magma_free_cpu(h_Cov_cross);
+    magma_free_cpu(h_obs_conditioning);
 
     // independent free
-    free(clusterid);
     free(locations->x);
     free(locations->y);
     free(locations_new->x);
@@ -658,7 +652,8 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
 
     magma_free_cpu(h_Cov);
     magma_free_cpu(h_obs);
-    magma_free_cpu(dot_result_h);
+    magma_free_cpu(h_obs_new);
+    magma_free_cpu(norm2_result_h);
     magma_free_cpu(logdet_result_h);
 
     magma_free(d_Cov);

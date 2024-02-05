@@ -18,7 +18,6 @@
  * @date 2022-11-09
  *
  **/
-// #include "../include/exageostatcore.h"
 #include <assert.h>
 #include <cstdio>
 #include <math.h>
@@ -27,7 +26,7 @@
 #include <gsl/gsl_fft_complex.h>
 #include <nlopt.h>
 #include <stdint.h>
-#include "../include/ckernel.h"
+#include "ckernel.h"
 
 #define pow_e (2.71828182845904)
 #define PI (3.141592653589793)
@@ -1042,13 +1041,6 @@ void core_dcmg(double* A, int m, int n,
 			else
 				A[i + j * m] = con * pow(expr, localtheta[2]) 
 					* gsl_sf_bessel_Knu(localtheta[2], expr); // Matern Function
-			// double aa = sigma_square * (1 + expr) * exp(-expr);
-			// fprintf(stderr, "%d th location: (%lf, %lf) (%lf, %lf) and distance %lf,  covariance: %lf covaraince %lf \n", 
-			// 			i, 
-			// 			l1->x[i0], l1->y[i0], 
-			// 			l2>x[j0], l2->y[j0], 
-			// 			expr,
-			// 			A[i0 + j0 * m], aa);
 			j0++;
 		}
 		// fprintf(stderr, "%lf %lf \n", l1->x[i0], l1->y[i0]);

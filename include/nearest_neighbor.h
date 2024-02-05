@@ -57,7 +57,7 @@ static double distanceEarth(double lat1d, double lon1d, double lat2d, double lon
     return 2.0 * earthRadiusKm * asin(sqrt(u * u + cos(lat1r) * cos(lat2r) * v * v));
 }
 
-void findNearestPoints(double *h_obs_conditioning, location *locations_con, location *locsCentroid, int *firstClusterCount, double *h_obs, location *locations, int l0, int l1, int k, int i_block, int distance_metric) {
+void findNearestPoints(double *h_obs_conditioning, location *locations_con, location *locsCentroid, int *firstClusterCount, double *h_obs_new, location *locations_new, int l0, int l1, int k, int i_block, int distance_metric) {
 
     double *centroid = (double *)calloc(2, sizeof(double));
     centroid[0] = locsCentroid->x[i_block + firstClusterCount[0] - 1];
@@ -69,9 +69,9 @@ void findNearestPoints(double *h_obs_conditioning, location *locations_con, loca
     for (int i = l0; i < l1; i++) {
         double distance;
         if (distance_metric == 1) {
-            distance = distanceEarth(centroid[0], centroid[1], locations->x[i], locations->y[i]);
+            distance = distanceEarth(centroid[0], centroid[1], locations_new->x[i], locations_new->y[i]);
         } else {
-            distance = calEucDistance(centroid[0], centroid[1], locations->x[i], locations->y[i]);
+            distance = calEucDistance(centroid[0], centroid[1], locations_new->x[i], locations_new->y[i]);
         }
         distances[i - l0] = distance;
         indices[i - l0] = i;
@@ -100,9 +100,9 @@ void findNearestPoints(double *h_obs_conditioning, location *locations_con, loca
     }
 
     for (int i = 0; i < k; i++) {
-        locations_con->x[i_block * k + i] = locations->x[indices[i]];
-        locations_con->y[i_block * k + i] = locations->y[indices[i]];
-        h_obs_conditioning[i_block * k + i] = h_obs[indices[i]];
+        locations_con->x[i_block * k + i] = locations_new->x[indices[i]];
+        locations_con->y[i_block * k + i] = locations_new->y[indices[i]];
+        h_obs_conditioning[i_block * k + i] = h_obs_new[indices[i]];
     }
     // fprintf(stderr, "asdasdas 3\n");
     // // free(indices);

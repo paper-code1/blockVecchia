@@ -1,3 +1,4 @@
+
 #ifndef LLG_H
 #define LLG_H
 
@@ -6,17 +7,19 @@
 #include <cuda_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
-
+#include <vector>
+#include <unordered_map>
+#include <algorithm> // For std::max_element and std::min_element
+#include <iostream>
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
-
   // to combine the first clusters together and
   // then the out is feed for the new locations and
   // obeservations for batch operations
-  void cluster_combine(int *firstClusterCount, int *firstClusterSize, int num_loc, int *clusterid, int *permIndex, int *clusterNum)
+  void cluster_combine(int *firstClusterCount, int *firstClusterSize, int num_loc, std::vector<Point> &points, int *permIndex, int *clusterNum)
   {
     // combine the first clusters together
     // when the first proper cluster is larger than 1
@@ -30,9 +33,9 @@ extern "C"
         int _nc = 0;
         for (int k = 0; k < num_loc; k++)
         {
-          if (clusterid[k] == permIndex[i])
+          if (points[k].cluster == permIndex[i])
           {
-            clusterid[k] = permIndex[0];
+            points[k].cluster = permIndex[0];
             _nc++;
           }
         }
@@ -43,18 +46,18 @@ extern "C"
     }
   }
 
-  void cluster_to_batch(int num_loc, int batchCount, int *batchNum, int *batchNumAccum, int *batchIndex, location *locations, double *h_obs, location *locations_new, double *h_obs_new, int *clusterid, location *locsCentroid)
+  void cluster_to_batch(int num_loc, int batchCount, int *batchNum, int *batchNumAccum, int *batchIndex, location *locations, double *h_obs, location *locations_new, double *h_obs_new, std::vector<Point> &points, location *locsCentroid)
   {
     // reconstruct the new locations and observations
     for (int i = 0; i < batchCount; ++i)
     {
-      // batchIndex[i] is the current cluster, it has batchNum[i] locations 
+      // batchIndex[i] is the current cluster, it has batchNum[i] locations
       int _id = 0;
       for (int j = 0; j < batchNum[i]; ++j)
       {
         while (true)
         {
-          if ((clusterid[_id] == batchIndex[i]) || _id >= num_loc)
+          if ((points[_id].cluster == batchIndex[i]) || _id >= num_loc)
             break;
           else
             _id++;
@@ -103,16 +106,17 @@ extern "C"
     }
     return false;
   }
-  void reorderIndex(location *locsCentroid, double **centroid, int *clusterReordering, int nclusters)
+  void reorderIndex(location *locsCentroid, std::vector<Point> &points, int *clusterReordering, int nclusters)
   {
+    // in/out: clusterReordering, 0, 1, 2, 3, ...., n -> 10, 2, 3, ...,
     for (int i = 0; i < nclusters; ++i)
     {
-      double _dist_min = 999999999999;
+      double _dist_min = DBL_MAX;
       double _dist_temp = 0;
       for (int j = 0; j < nclusters; ++j)
       {
-        _dist_temp = sqrt(pow(locsCentroid->x[i] - centroid[j][0], 2) +
-                          pow(locsCentroid->y[i] - centroid[j][1], 2));
+        _dist_temp = sqrt(pow(locsCentroid->x[i] - points[j].coordinates[0], 2) +
+                          pow(locsCentroid->y[i] - points[j].coordinates[1], 2));
         if (_dist_temp < _dist_min)
         {
           clusterReordering[i] = j;
@@ -128,126 +132,102 @@ extern "C"
     }
   }
 
-  /*
-  clustering for the locations
-  */
-  // Function to print the results
-  void printClusterResults(int nclusters, int num_loc, int *clusterid, double **cdata, int *cnum, int *max_num_cluster)
+  std::vector<Point> convertToPoints(location *loc, int n)
   {
-    printf("Cluster results:\n");
-    for (int i = 0; i < nclusters; ++i)
+    std::vector<Point> points;
+    points.reserve(n); // Optimize memory allocation
+
+    for (int i = 0; i < n; ++i)
     {
-      printf("Cluster %d: (%lf, %lf) %d locations", i, cdata[i][0], cdata[i][1], cnum[i]);
-      printf("\n");
+      Point p;                      // Use the default constructor
+      p.coordinates[0] = loc->x[i]; // Set x coordinate
+      p.coordinates[1] = loc->y[i]; // Set y coordinate
+      p.cluster = -1;               // Assuming you want to initialize the cluster to -1 or some default value
+      points.push_back(p);          // Add the point to the vector
     }
-    printf("Max neighbors %d \n", max_num_cluster[0]);
+
+    return points;
   }
 
-  // Function to print the results and count the number of points in each cluster
-  void ClusterCounts(int nclusters, int num_loc, int *clusterid, int *cnum, int *max_num_cluster, int *min_num_cluster)
+  // Transfer clusterCounts to an int array
+  int *transferClusterCounts(const std::unordered_map<int, int> &clusterCounts)
   {
-    for (int i = 0; i < num_loc; ++i)
+    int arraySize = 0;
+    // Find the maximum cluster ID to determine the size of the array
+    int maxClusterId = std::max_element(clusterCounts.begin(), clusterCounts.end(),
+                                        [](const std::pair<int, int> &a, const std::pair<int, int> &b)
+                                        {
+                                          return a.first < b.first;
+                                        })->first;
+
+    arraySize = maxClusterId + 1;           // Array size needs to be maxClusterId + 1 to include the max ID
+    int *clusterNum = new int[arraySize](); // Allocate and zero-initialize the array
+
+    // Fill the array with counts
+    for (const auto &pair : clusterCounts)
     {
-      cnum[clusterid[i]]++; // Increment count for the corresponding cluster
+      clusterNum[pair.first] = pair.second;
     }
-    min_num_cluster[0] = 9999;
-    max_num_cluster[0] = -1;
-    for (int i = 0; i < nclusters; ++i)
-    {
-      if (max_num_cluster[0] < cnum[i])
-        max_num_cluster[0] = cnum[i];
-      if (min_num_cluster[0] > cnum[i])
-        min_num_cluster[0] = cnum[i];
-    }
+
+    return clusterNum;
   }
 
-  void clustering_2D(size_t nclusters, int num_loc,
-                     location *locations,
-                     int *clusterid, double **cdata,
-                     int *cnum, int *max_num_cluster, int seed)
+  // Function to count points in each cluster and find the maximum
+  int *countPointsInClusters(const std::vector<Point> &points)
   {
-    // 2D locations
-    int dim = 2;
-    srand(seed);
-    // Allocate and initialize data, mask, and weight arrays
-    double **data = (double **)malloc(num_loc * sizeof(double *));
-    int **mask = (int **)malloc(num_loc * sizeof(int *));
-    int **cmask = (int **)malloc(nclusters * sizeof(int *));
-    double *weight = (double *)malloc(dim * sizeof(double));
+    std::unordered_map<int, int> clusterCounts;
 
-    for (int i = 0; i < num_loc; ++i)
+    // Count the number of points in each cluster
+    for (const auto &point : points)
     {
-      // transform the locations into pointer to pointer array
-      data[i] = (double *)malloc(dim * sizeof(double));
-      mask[i] = (int *)malloc(dim * sizeof(int));
-      data[i][0] = locations->x[i];
-      data[i][1] = locations->y[i];
-      mask[i][0] = 1;
-      mask[i][1] = 1; // No missing data
-      // init the cluster points
-      if (i < nclusters)
-      {
-        cmask[i] = (int *)malloc(dim * sizeof(int));
-        for (int j = 0; j < dim; ++j)
-        {
-          cdata[i][j] = -1;
-          cmask[i][j] = 1; // No missing data
-        }
-      }
+      clusterCounts[point.cluster]++;
     }
 
-    // Initialize weights to 1
-    for (int j = 0; j < dim; ++j)
-      weight[j] = 1.0;
+    // Find the cluster with the maximum number of points
+    auto maxIt = std::max_element(clusterCounts.begin(), clusterCounts.end(),
+                                  [](const std::pair<int, int> &a, const std::pair<int, int> &b)
+                                  {
+                                    return a.second < b.second;
+                                  });
+    // Find the cluster with the minimum number of points
+    auto minIt = std::min_element(clusterCounts.begin(), clusterCounts.end(),
+                                  [](const std::pair<int, int> &a, const std::pair<int, int> &b)
+                                  {
+                                    return a.second < b.second;
+                                  });
 
-    // Other parameters
-    int transpose = 0;
-    int npass = 0;
-    char method = 'a';
-    char dist = 'e'; // Assuming 'e' is a valid distance type
-
-    // init the cluster id, no random effect here
-    for (int i = 0; i < num_loc; ++i)
-      // clusterid[i] = i % nclusters;
-      clusterid[i] = rand() % nclusters;
-    double error;
-    int ifound;
-    int *min_num_cluster = (int *)malloc(sizeof(int));
-
-    // Call the kcluster function
-    kcluster(nclusters, num_loc, dim, data, mask, weight, transpose, npass, method, dist, clusterid, &error, &ifound);
-
-    getclustercentroids(nclusters, num_loc, dim, data, mask, clusterid, cdata, cmask, transpose, method);
-
-    ClusterCounts(nclusters, num_loc, clusterid, cnum, max_num_cluster, min_num_cluster);
-
-    // Check results (debug mode)
-    // printClusterResults(nclusters, num_loc, clusterid, cdata, cnum, max_num_cluster);
-    fprintf(stderr, "Average distance to centroid: %f\n", error / num_loc);
-    fprintf(stderr, "Smallest cluster: %d\n", min_num_cluster[0]);
-    fprintf(stderr, "Largest cluster: %d\n", max_num_cluster[0]);
-
-    // printf("Ifound: %d\n", ifound);
-
-    // Clean up
-    for (int i = 0; i < num_loc; ++i)
-    {
-      free(data[i]);
-      free(mask[i]);
+    // Output the cluster with the maximum number of points
+    if (maxIt != clusterCounts.end())
+    { // Ensure there are clusters
+      std::cout << "Cluster with the most points: " << maxIt->first
+                << " (" << maxIt->second << " points)\n";
     }
-    free(data);
-    free(mask);
-    // free(weight);
+    else
+    {
+      std::cout << "No clusters found.\n";
+    }
+
+    // Output the cluster with the minimum number of points
+    if (minIt != clusterCounts.end())
+    { // Ensure there are clusters
+      std::cout << "Cluster with the least points: " << minIt->first
+                << " (" << minIt->second << " points)\n";
+    }
+    else
+    {
+      std::cout << "No clusters found.\n";
+    }
+
+    return transferClusterCounts(clusterCounts);
   }
-#ifdef __cplusplus
-}
-#endif
-
 /*
 determinant for log(det(A)) = log(det(L)det(L^T))
 strided version
 */
 
+#ifdef __cplusplus
+}
+#endif
 template <class T>
 void core_Xlogdet(T *L, int An, int ldda, T *logdet_result_h)
 {
@@ -266,5 +246,4 @@ void core_Xlogdet(T *L, int An, int ldda, T *logdet_result_h)
   // printf("-----------------------------------");
   free(L_h);
 }
-
 #endif

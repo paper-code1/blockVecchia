@@ -9,7 +9,7 @@ CXX ?= g++
 CC ?= gcc
 NVCC=$(_CUDA_ROOT_)/bin/nvcc
 NVOPTS = -ccbin $(CXX) --compiler-options -fno-strict-aliasing
-COPTS = -fopenmp
+COPTS = -fopenmp -march=native
 
 NVOPTS_3 = -DTARGET_SM=$(_CUDA_ARCH_) -allow-unsupported-compiler -arch sm_$(_CUDA_ARCH_) -Xcompiler -fopenmp
 ifdef _DEBUG_
@@ -68,11 +68,11 @@ include $(VECCHIA_BATCH)/Makefile
 
 all: $(EXE_VECCHIA)
 
-$(EXE_VECCHIA): $(BIN_DIR)/%: $(OBJ_DIR)/%.o $(OBJ_DIR)/cluster.o $(OBJ_DIR)/ckernel.o
-	$(CC) $(COPTS) $(OBJ_DIR)/cluster.o $(OBJ_DIR)/ckernel.o $< -o $@ $(LIB_PATH) $(LIB)
+$(EXE_VECCHIA): $(BIN_DIR)/%: $(OBJ_DIR)/%.o $(OBJ_DIR)/kmeans.o $(OBJ_DIR)/ckernel.o
+	$(CXX) $(COPTS) $(OBJ_DIR)/kmeans.o $(OBJ_DIR)/ckernel.o $< -o $@ $(LIB_PATH) $(LIB)
 
-$(OBJ_DIR)/cluster.o: $(VECCHIA_BATCH)/cluster.c
-	$(CC) $(COPTS) $(INCLUDES) -c $< -o $@
+$(OBJ_DIR)/kmeans.o: $(VECCHIA_BATCH)/kmeans.cpp
+	$(CXX) $(COPTS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/ckernel.o: $(VECCHIA_BATCH)/ckernel.cpp
 	$(CXX) $(COPTS) $(INCLUDES) -c $< -o $@

@@ -4,6 +4,7 @@ log/
 obj/
 .vscode/
 fig/
+simu_ds/
 
 *.ipynb
 *.txt
