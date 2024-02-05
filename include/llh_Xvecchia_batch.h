@@ -220,8 +220,8 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
         */
         // for (int i = 0; i < batchCount; i++)
         // {
-        //     printf("%dth", i);
-        //     printMatrixGPU(data->Am, data->An, data->d_Cov_conditioning + i * data->Am * data->ldda, data->ldda);
+        //     // printMatrixGPU(h_ldacon[i], h_lda[i], h_Cov_cross_array[i], h_ldda[i], i);
+        //     printMatrixGPU(h_lda[i], h_lda[i], h_Cov_conditioning_array[i], h_ldda[i], i);
         // }
         // printf("[info] Starting Cholesky decomposition. \n");
 
@@ -238,8 +238,8 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
 
         // for (int i = 0; i < batchCount; i++)
         // {
-        //     printf("%dth", i);
-        //     printMatrixGPU(data->Am, data->An, data->d_Cov + i * data->Am * data->ldda, data->ldda);
+        //     printMatrixGPU(h_ldacon[i], h_lda[i], h_Cov_cross_array[i], h_ldda[i], i);
+        //     printMatrixGPU(h_lda[i], h_lda[i], h_Cov_conditioning_array[i], h_ldda[i], i);
         // }
         // printf("[info] Finished Cholesky decomposition. \n");
         /*
@@ -398,7 +398,7 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
     // {
     //     printMatrixGPU(h_lda[i], 1, h_obs_array_copy[i], h_ldda[i], i);
     // }
-    for (int i = 1; i < batchCount; ++i)
+    for (int i = 0; i < batchCount; ++i)
     {
         // determinant
         core_Xlogdet<T>(h_Cov_array[i], //
@@ -408,20 +408,6 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
         norm2_result_h[i] = magma_dnrm2(h_lda[i],
                                         h_obs_array_copy[i],
                                         1, queue);
-    }
-
-    if (data->num_loc < 2 * batchCount)
-    {
-        // for classic Vecchia
-        // the first batch is the joint log-likelihood P(Z0)
-        // its related computation has already been calculated in
-        // vecchia conditioning
-        core_Xlogdet<T>(h_Cov_conditioning_array[0], //
-                        cs, h_lddacon[0],
-                        &(logdet_result_h[0]));
-        // printVecGPU(h_lda[i], 1, h_obs_array_copy[i], h_lda[i], i);
-        norm2_result_h[0] = magma_dnrm2(cs, h_obs_conditioning_array_copy[0], 1, queue);
-        batchNum[0] = cs;
     }
 
     for (int k = 0; k < batchCount; k++)

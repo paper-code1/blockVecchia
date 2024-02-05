@@ -221,6 +221,15 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
         kmean_par(points, centroids, 1000, nclusters, opts.omp_numthreads);
         clusterNum = countPointsInClusters(points);
     }
+    // // used to visualize clusters
+    // std::ofstream outFile("./trash/points.csv");
+    // outFile << "x,y,cluster\n"; // Header
+
+    // for(const auto& point : points) {
+    //     outFile << point.coordinates[0] << "," << point.coordinates[1] << "," << point.cluster << "\n";
+    // }
+
+    // outFile.close();
     fprintf(stderr, "--------------Clustering Done-----------------\n");
     //-------------------------------------------------------------//
     //------------------ Clusters Reordering -----------------------//
@@ -396,6 +405,7 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     }
     h_obs_tmp = h_obs_new;
     // for (int i=0; i< 100; i++) fprintf(stderr, "%lf ", h_obs_new[i]);
+    // for (int i=0; i< batchCount; i++) fprintf(stderr, "%d ", batchNum[i]);
     d_obs_tmp = d_obs;
     for (int i = 0; i < batchCount; i++)
     {
