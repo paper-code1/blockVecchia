@@ -16,6 +16,7 @@ extern "C"
 std::vector<Point> kmean_seq (std::vector<Point>& points, std::vector<Point>& centroids, int epochs, int k, int threads);
 
 void kmean_par (std::vector<Point>& points, std::vector<Point>& centroids, int epochs, int k, int threads);
+void kmean_par_earth (std::vector<Point>& points, std::vector<Point>& centroids, int epochs, int k, int threads);
 #ifdef __cplusplus
 }
 #endif

@@ -1034,7 +1034,7 @@ void core_dcmg(double* A, int m, int n,
 		j0 = 0;
 		for (j = 0; j < n; j++) {
 			expr = calculateDistance(l1, l2, i0, j0, distance_metric, 0) / localtheta[1];
-			// expr /= 100.; /*comment it for synthetic dataset*/
+			expr /= 9348.317; /*comment it for real dataset, 2523.64 wind, 9348.317 soil*/ 
 			// printf("%lf \n", expr);
 			if (expr == 0)
 				A[i + j * m] = sigma_square /*+ 1e-4*/;
@@ -1920,9 +1920,9 @@ void core_dcmg_trivariate_parsimonious(double* A, int m, int n,
  *
  ******************************************************************************/
 void core_dcmg_pow_exp(double* A, int m, int n,
-		int m0, int n0,
+		// int m0, int n0,
 		location* l1, location* l2,
-		double* localtheta, int distance_metric) {
+		const double* localtheta, int distance_metric) {
 
 	//Matern kernel
 	//localtheta[0] --> variance (sigma),
@@ -1934,19 +1934,21 @@ void core_dcmg_pow_exp(double* A, int m, int n,
 	//localtheta[1] --> range(beta)
 	//localtheta[2] --> range(delta)   0 < delta< 2
 	int i, j;
-	int i0 = m0;
-	int j0 = n0;
+	// int i0 = m0;
+	// int j0 = n0;
+	int i0 = 0;
+	int j0 = 0;
 	double x0, y0, z0;
 	double expr = 0.0;
 	double expr1 = 0.0;
 	double sigma_square = localtheta[0];// * localtheta[0];
 
 	for (i = 0; i < m; i++) {
-		j0 = n0;
+		j0 = 0;
 		for (j = 0; j < n; j++) {
 			expr = calculateDistance(l1, l2, i0, j0, distance_metric, 0);
+			expr /= 9348.317;
 			expr1 = pow(expr, localtheta[2]);
-
 
 			if (expr == 0)
 				A[i + j * m] = sigma_square /*+ 1e-4*/;

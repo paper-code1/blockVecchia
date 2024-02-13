@@ -18,6 +18,8 @@ extern "C"
 {
 #endif
 #define DIM 2
+#define PI (3.141592653589793)
+#define earthRadiusKm (6371.0)
 
 struct Point{
 
@@ -74,6 +76,20 @@ inline double euclidean_dist(const Point& p1, const Point& p2){
     for (int i=0; i<DIM; i++)
         distance += (p1.coordinates[i] - p2.coordinates[i]) * (p1.coordinates[i] - p2.coordinates[i]);
     return distance;
+}
+
+inline double deg2rad(double deg) {
+	return (deg * PI / 180);
+}
+inline double distanceEarth(const Point& p1, const Point& p2) {
+	double lat1r, lon1r, lat2r, lon2r, u, v;
+	lat1r = deg2rad(p1.coordinates[0]);
+	lon1r = deg2rad(p1.coordinates[1]);
+	lat2r = deg2rad(p2.coordinates[0]);
+	lon2r = deg2rad(p2.coordinates[1]);
+	u = sin((lat2r - lat1r) / 2);
+	v = sin((lon2r - lon1r) / 2);
+	return 2.0 * earthRadiusKm * asin(sqrt(u * u + cos(lat1r) * cos(lat2r) * v * v));
 }
 
 /*

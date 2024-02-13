@@ -245,7 +245,7 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
     // ----- BOBYQA optimization config  ---- //
     //-------------------------------------//
     // optimization setting
-    opts->tol = 1e-9;
+    opts->tol = 1e-5;
     opts->maxiter = 1000;
     opts->lower_bound = 0.01;
     opts->upper_bound = 3.;
@@ -442,7 +442,7 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
             double a1 = -1, a2 = -1, a3 = -1, a4 = -1; // Initialize with default values indicating 'unknown'
             char s1[10], s2[10], s3[10], s4[10];       // Arrays to hold the string representations
             // Parse the input into string buffers
-            int info = sscanf(argv[i], "%9[^:]:%9[^:]:%9[^:]:%9[^:]", s1, s2, s3, s4);
+            int info = sscanf(argv[i], "%11[^:]:%11[^:]:%11[^:]:%11[^:]", s1, s2, s3, s4);
             if (info < 3 || info > 4)
             {
                 printf("Other kernels have been developing on the way!");

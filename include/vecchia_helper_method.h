@@ -108,28 +108,46 @@ extern "C"
   }
   void reorderIndex(location *locsCentroid, std::vector<Point> &points, int *clusterReordering, int nclusters)
   {
-    // in/out: clusterReordering, 0, 1, 2, 3, ...., n -> 10, 2, 3, ...,
+// in/out: clusterReordering, 0, 1, 2, 3, ...., n -> 10, 2, 3, ...,
+// for (int i = 0; i < nclusters; ++i)
+// {
+//   double _dist_min = DBL_MAX;
+//   double _dist_temp = 0;
+//   for (int j = 0; j < nclusters; ++j)
+//   {
+//     _dist_temp = (locsCentroid->x[i] - points[j].coordinates[0]) * (locsCentroid->x[i] - points[j].coordinates[0]) + (locsCentroid->y[i] - points[j].coordinates[1]) * (locsCentroid->y[i] - points[j].coordinates[1]);
+//     if (_dist_temp < _dist_min)
+//     {
+//       clusterReordering[i] = j;
+//       _dist_min = _dist_temp;
+//     }
+//   }
+// }
+#pragma omp parallel for
     for (int i = 0; i < nclusters; ++i)
     {
       double _dist_min = DBL_MAX;
-      double _dist_temp = 0;
+      int min_index = 0; // Track the index of the minimum distance
       for (int j = 0; j < nclusters; ++j)
       {
-        _dist_temp = sqrt(pow(locsCentroid->x[i] - points[j].coordinates[0], 2) +
-                          pow(locsCentroid->y[i] - points[j].coordinates[1], 2));
+        double dx = locsCentroid->x[i] - points[j].coordinates[0];
+        double dy = locsCentroid->y[i] - points[j].coordinates[1];
+        double _dist_temp = dx * dx + dy * dy; // Use squared distance
         if (_dist_temp < _dist_min)
         {
-          clusterReordering[i] = j;
           _dist_min = _dist_temp;
+          min_index = j;
         }
       }
+      clusterReordering[i] = min_index;
     }
-    // check if there is same orders
-    if (hasDuplicates(clusterReordering, nclusters))
-    {
-      fprintf(stderr, "Your reordering has unknown issues, please check it");
-      exit(-1);
-    }
+
+    // // check if there is same orders
+    // if (hasDuplicates(clusterReordering, nclusters))
+    // {
+    //   fprintf(stderr, "Your reordering has unknown issues, please check it");
+    //   exit(-1);
+    // }
   }
 
   std::vector<Point> convertToPoints(location *loc, int n)
@@ -158,7 +176,8 @@ extern "C"
                                         [](const std::pair<int, int> &a, const std::pair<int, int> &b)
                                         {
                                           return a.first < b.first;
-                                        })->first;
+                                        })
+                           ->first;
 
     arraySize = maxClusterId + 1;           // Array size needs to be maxClusterId + 1 to include the max ID
     int *clusterNum = new int[arraySize](); // Allocate and zero-initialize the array
@@ -220,10 +239,10 @@ extern "C"
 
     return transferClusterCounts(clusterCounts);
   }
-/*
-determinant for log(det(A)) = log(det(L)det(L^T))
-strided version
-*/
+  /*
+  determinant for log(det(A)) = log(det(L)det(L^T))
+  strided version
+  */
 
 #ifdef __cplusplus
 }

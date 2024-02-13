@@ -22,10 +22,10 @@ double calEucDistance(double x1, double y1, double x2, double y2)
  * This function converts decimal degrees to radians
  * @param deg decimal degree
  */
-static double deg2rad(double deg)
-{
-    return (deg * PI / 180);
-}
+// static double deg2rad(double deg)
+// {
+//     return (deg * PI / 180);
+// }
 
 /**
  * This function converts radians to decimal degrees

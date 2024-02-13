@@ -170,16 +170,24 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
         // std::string xy_path = "./trash/synthetic_ds/LOC_640_1";
         // std::string z_path = "./trash/synthetic_ds/Z_640_1";
         /*simulations*/
-        std::string xy_path = "./simu_ds/20ks_" + std::to_string(opts.beta) + "_" + std::to_string(opts.nu) + "/LOC_20000_univariate_matern_stationary_" + std::to_string(opts.seed);
-        std::string z_path = "./simu_ds/20ks_" + std::to_string(opts.beta) + "_" + std::to_string(opts.nu) + "/Z1_20000_univariate_matern_stationary_" + std::to_string(opts.seed);
+        // fprintf(stderr, "You are testing the simulations!\n");
+        // std::string xy_path = "./simu_ds/20ks_" + std::to_string(opts.beta) + "_" + std::to_string(opts.nu) + "/LOC_20000_univariate_matern_stationary_" + std::to_string(opts.seed);
+        // std::string z_path = "./simu_ds/20ks_" + std::to_string(opts.beta) + "_" + std::to_string(opts.nu) + "/Z1_20000_univariate_matern_stationary_" + std::to_string(opts.seed);
+        /*real dataset*/
+        fprintf(stderr, "You are doing the parameter estimation in the real dataset!\n");
+        std::string xy_path = "./soil_moist/meta_train_0.125";
+        std::string z_path = "./soil_moist/observation_train_0.125";
+        // std::string xy_path = "./wind/meta_train_250000";
+        // std::string z_path = "./wind/observation_train_250000";
 
-        // Print the z_path string
-        std::cout << z_path << std::endl;
-        // Print the z_path string
-        std::cout << xy_path << std::endl;
-        data.distance_metric = 0;
+        // // Print the z_path string
+        // std::cout << z_path << std::endl;
+        // // Print the z_path string
+        // std::cout << xy_path << std::endl;
+        data.distance_metric = 1; // 1 for earth distance
         locations = loadXYcsv(xy_path, opts.num_loc);
         loadObscsv<T>(z_path, opts.num_loc, h_obs);
+        // for(int i = 0; i < 10000; i++) printf("%ith %lf \n",i, h_obs[i]);
         if (opts.kernel == 1 || opts.kernel == 2)
         {
             localtheta_initial[0] = opts.sigma_init;
@@ -218,7 +226,9 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
         // init the centroids
         centroids = random_initializer(points, nclusters, opts.seed);
         // kmeans, 1000 here is default for kmeans iterations
-        kmean_par(points, centroids, 1000, nclusters, opts.omp_numthreads);
+        kmean_par(points, centroids, 100, nclusters, opts.omp_numthreads);
+        // very slow, not recommend to use
+        // kmean_par_earth(points, centroids, 500, nclusters, opts.omp_numthreads);
         clusterNum = countPointsInClusters(points);
     }
     // // used to visualize clusters
@@ -324,8 +334,8 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
         for (int i = 1; i < batchCount; ++i)
         {
             // how many previous points you would like to include in your nearest neighbor searching
-            // int starting_loc = std::max(i * bs - 10000 * bs, 0);
-            int starting_loc = 0;
+            int starting_loc = std::max(i - 100000, 0);
+            // int starting_loc = 0;
             findNearestPoints(
                 h_obs_conditioning, locations_con,
                 locsCentroid, firstClusterCount,

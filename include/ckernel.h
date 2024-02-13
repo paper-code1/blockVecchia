@@ -543,9 +543,9 @@ extern "C"
                            double *localtheta, int distance_metric);
 
     void core_dcmg_pow_exp(double *A, int m, int n,
-                           int m0, int n0,
+                        //    int m0, int n0,
                            location *l1, location *l2,
-                           double *localtheta, int distance_metric);
+                           const double *localtheta, int distance_metric);
 
     void core_sdcmg_pow_exp(double *A, int m, int n,
                             int m0, int n0,

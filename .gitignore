@@ -5,9 +5,12 @@ obj/*
 .vscode/
 fig/
 simu_ds/
+soil_moist/
+wind/
 
 *.ipynb
 *.txt
 test_kl.sh
 test_llh.sh
 test_simulation.sh
+*.sh
