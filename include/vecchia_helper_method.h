@@ -1,4 +1,18 @@
+/**
+ * @copyright (c) 2024- King Abdullah University of Science and
+ *                      Technology (KAUST). All rights reserved.
+ **/
 
+/**
+ * @file include/vecchia_helper_method
+
+ *
+ *
+ *
+ * @version 1.0.0
+ * @author Qilong Pan
+ * @date 2024-03-14
+ **/
 #ifndef LLG_H
 #define LLG_H
 

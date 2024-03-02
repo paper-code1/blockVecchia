@@ -4,12 +4,12 @@
  **/
 
 /**
- * @file
+ * @file src/test_Xvecchia_batch
 
  *
  *
  *
- * @version 0.0.0
+ * @version 1.0.0
  * @author Qilong Pan
  * @date 2024-03-14
  **/
@@ -55,6 +55,10 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
 
     // first to create a folder to save the log information
     createLogFile(opts);
+
+    // real/simu data path
+    std::string xy_path;
+    std::string z_path;
 
     llh_data data;
     location *locations;
@@ -166,24 +170,26 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     }
     else
     {
-        /*used for the simulated data and real applications*/
-        // std::string xy_path = "./trash/synthetic_ds/LOC_640_1";
-        // std::string z_path = "./trash/synthetic_ds/Z_640_1";
-        /*simulations*/
-        // fprintf(stderr, "You are testing the simulations!\n");
-        // std::string xy_path = "./simu_ds/20ks_" + std::to_string(opts.beta) + "_" + std::to_string(opts.nu) + "/LOC_20000_univariate_matern_stationary_" + std::to_string(opts.seed);
-        // std::string z_path = "./simu_ds/20ks_" + std::to_string(opts.beta) + "_" + std::to_string(opts.nu) + "/Z1_20000_univariate_matern_stationary_" + std::to_string(opts.seed);
-        /*real dataset*/
-        fprintf(stderr, "You are doing the parameter estimation in the real dataset!\n");
-        std::string xy_path = "./soil_moist/meta_train_0.125";
-        std::string z_path = "./soil_moist/observation_train_0.125";
-        // std::string xy_path = "./wind/meta_train_250000";
-        // std::string z_path = "./wind/observation_train_250000";
 
-        // // Print the z_path string
-        // std::cout << z_path << std::endl;
-        // // Print the z_path string
-        // std::cout << xy_path << std::endl;
+        if (opts.xy_path.empty()){
+            fprintf(stderr, "You are using the default the path, please see in file ./src/test_Xvecchia_batch.cpp line 169!\n");
+            /*used for the simulated data and real applications*/
+            /*simulations*/
+            // fprintf(stderr, "You are testing the simulations!\n");
+            xy_path = "./simu_ds/20ks_" + std::to_string(opts.beta) + "_" + std::to_string(opts.nu) + "/LOC_20000_univariate_matern_stationary_" + std::to_string(opts.seed);
+            z_path = "./simu_ds/20ks_" + std::to_string(opts.beta) + "_" + std::to_string(opts.nu) + "/Z1_20000_univariate_matern_stationary_" + std::to_string(opts.seed);
+            /*real dataset*/
+            // fprintf(stderr, "You are doing the parameter estimation in the real dataset!\n");
+            // xy_path = "./soil_moist/meta_train_0.125";
+            // z_path = "./soil_moist/observation_train_0.125";
+            // xy_path = "./wind/meta_train_250000";
+            // z_path = "./wind/observation_train_250000";
+        }else{
+            // Convert char* to std::string
+            xy_path = opts.xy_path;
+            z_path = opts.obs_path;
+        }
+        
         data.distance_metric = 1; // 1 for earth distance
         locations = loadXYcsv(xy_path, opts.num_loc);
         loadObscsv<T>(z_path, opts.num_loc, h_obs);
@@ -232,14 +238,6 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
         clusterNum = countPointsInClusters(points);
     }
     // // used to visualize clusters
-    // std::ofstream outFile("./trash/points.csv");
-    // outFile << "x,y,cluster\n"; // Header
-
-    // for(const auto& point : points) {
-    //     outFile << point.coordinates[0] << "," << point.coordinates[1] << "," << point.cluster << "\n";
-    // }
-
-    // outFile.close();
     fprintf(stderr, "--------------Clustering Done-----------------\n");
     //-------------------------------------------------------------//
     //------------------ Clusters Reordering -----------------------//
@@ -354,6 +352,40 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
             memcpy(locations_con->y + i * cs, locations_new->y + batchNumAccum[i] - cs, sizeof(T) * cs);
             memcpy(h_obs_conditioning + i * cs, h_obs_new + batchNumAccum[i] - cs, sizeof(T) * cs);
         }
+    }
+    if (opts.perf)
+    {
+        std::string clustersFile;
+        std::string neighborsFile;
+        if (opts.randomordering == 1){
+            clustersFile = "./log/points_Random.csv";
+            neighborsFile = "./log/neighbors_Random.csv";
+        }else if(opts.kdtreeordering == 1){
+            clustersFile = "./log/points_KDtree.csv";
+            neighborsFile = "./log/neighbors_KDtree.csv";
+        }else if(opts.hilbertordering == 1){
+            clustersFile = "./log/points_Hilbert.csv";
+            neighborsFile = "./log/neighbors_Hilbert.csv";
+        }else if(opts.mortonordering == 1){
+            clustersFile = "./log/points_Morton.csv";
+            neighborsFile = "./log/neighbors_Morton.csv";
+        }
+        std::ofstream outFilepoints(clustersFile);
+        outFilepoints << "x,y,cluster\n"; // Header
+        for (int i = 0; i < batchCount; i++)
+        {
+            for (int j = 0; j < batchNum[i]; j++){
+                outFilepoints << locations_new->x[batchNumAccum[i] + j] << "," << locations_new->y[batchNumAccum[i] + j] << "," << i << "\n";
+            }
+        }
+        outFilepoints.close();
+        std::ofstream outFile(neighborsFile);
+        outFile << "x,y,cluster\n"; // Header
+        for (int i = 0; i < cs * batchCount; i++)
+        {
+            outFile << locations_con->x[i] << "," << locations_con->y[i] << "," << i / cs << "\n";
+        }
+        outFile.close();
     }
     // printLocations(opts.num_loc, locations);
     // printLocations(cs * batchCount, locations_con);

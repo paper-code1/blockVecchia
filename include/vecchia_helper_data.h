@@ -1,3 +1,20 @@
+/**
+ * @copyright (c) 2024- King Abdullah University of Science and
+ *                      Technology (KAUST). All rights reserved.
+ **/
+
+/**
+ * @file include/vecchia_helper_data
+
+ *
+ *
+ *
+ * @version 1.0.0
+ * @author Qilong Pan
+ * @date 2024-03-14
+ **/
+
+
 #ifndef VECCHIA_HELPER_H
 #define VECCHIA_HELPER_H
 
@@ -5,6 +22,29 @@
 #define BATCHCOUNT_MAX 999999999
 
 #include "magma_v2.h"
+
+// Function to display help text
+void displayHelp() {
+    std::cout << "Usage: test_dvecchia_batch [options]\n"
+              << "Options:\n"
+              << "  --help                Display this help message and exit\n"
+              << "  --ikernel             The parameters in kernel, sigma^2:range:smooth, e.g., 1.5:0.1:0.5\n"
+              << "  --kernel              The name of kernels, such as matern kernel, e.g., univariate_matern_stationary_no_nugget\n"
+              << "  --kernel_init         The initial values of parameters in kernel, sigma^2:range:smooth, e.g., 1.5:0.1:0.5\n"
+              << "  --vecchia_bc          [int] The block count in Vecchia method (number of clusters), e.g., 300,\n"
+              << "  --vecchia_cs          [int] The conditioning size in Vecchia method, e.g., 1500,\n"
+              << "  --num_loc             [int] The number of locations, e.g., 20000,\n"
+              << "  --knn                 nearest neighbors searching, default to use.\n"
+              << "  --perf                Only calculate the one iteraion of block/classic Vecchia and obs=0.\n"
+              << "  --seed                [int] random generation for locations and observations.\n"
+              << "  --xy_path             [string] locations path.\n"
+              << "  --obs_path            [string] observations path.\n"
+              << "  --tol                 [int] tolerance of BOBYQA, 5 -> 1e-5.\n"
+              << "  --omp_threads         [int] number openmp threads, default 40.\n"
+              << "  --permutation         [string] reordering method, default as random, (optional) kdtree, morton, hilber.\n"
+              // Add more options as necessary
+              << std::endl;
+}
 
 /***************************************************************************/ /**
                                                                                * Macros to handle error checking.
@@ -106,6 +146,10 @@ extern "C"
 
         int omp_numthreads;
 
+        // real data path
+        std::string xy_path;
+        std::string obs_path;
+
         // local theta for kernel in GPs
         double sigma;
         double beta;
@@ -193,6 +237,9 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
     //-------------------------------------//
     // --------- problem setting  --------- //
     //-------------------------------------//
+    // //real dataset path
+    // opts->xy_path;
+    // opts->obs_path;
 
     // extra config
     // 1: univaraite or 2: bivariate
@@ -224,8 +271,8 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
     opts->knn = 1;
 
     // random ordering
-    opts->randomordering = 0;
-    opts->mortonordering = 1;
+    opts->randomordering = 1;
+    opts->mortonordering = 0;
     opts->kdtreeordering = 0;
     opts->hilbertordering = 0;
     opts->mmdordering = 0;
@@ -273,9 +320,20 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
         //-------------------------------------//
         // --------- problem setting  --------- //
         //-------------------------------------//
-
+        // real dataset input
+        if (strcmp(argv[i], "--xy_path") == 0 && i + 1 < argc) {
+            i++;
+            opts->xy_path = argv[i]; // The next argument is the path
+            std::cout << "xy_path: " << opts->xy_path << std::endl;
+        }
+        // real dataset input
+        else if (strcmp(argv[i], "--obs_path") == 0 && i + 1 < argc) {
+            i++;
+            opts->obs_path = argv[i]; // The next argument is the path
+            std::cout << "obs_path: " << opts->obs_path << std::endl;
+        }
         // num_loc: number of locations
-        if (strcmp("--num_loc", argv[i]) == 0 && i + 1 < argc)
+        else if (strcmp("--num_loc", argv[i]) == 0 && i + 1 < argc)
         {
             i++;
             int num_loc;
@@ -321,48 +379,34 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
             }
         }
         // used for performance test
-        else if (strcmp("--perf", argv[i]) == 0)
+        else if (strcmp("--perf", argv[i]) == 0 && i + 1 < argc)
         {
             opts->perf = 1;
             opts->maxiter = 1;
         }
         // k nearest neighbors
-        else if (strcmp("--knn", argv[i]) == 0)
+        else if (strcmp("--knn", argv[i]) == 0 && i + 1 < argc)
         {
             opts->knn = 1;
         }
         // ordering
-        else if (strcmp("--randomordering", argv[i]) == 0)
+        else if (strcmp("--permutation", argv[i]) == 0 && i + 1 < argc)
         {
-            opts->randomordering = 1;
-            opts->mortonordering = 0;
-            opts->kdtreeordering = 0;
-            opts->hilbertordering = 0;
-            opts->mmdordering = 0;
-        }
-        else if (strcmp("--kdtreeordering", argv[i]) == 0)
-        {
-            opts->randomordering = 0;
-            opts->mortonordering = 0;
-            opts->kdtreeordering = 1;
-            opts->hilbertordering = 0;
-            opts->mmdordering = 0;
-        }
-        else if (strcmp("--hilbertordering", argv[i]) == 0)
-        {
-            opts->randomordering = 0;
-            opts->mortonordering = 0;
-            opts->kdtreeordering = 0;
-            opts->hilbertordering = 1;
-            opts->mmdordering = 0;
-        }
-        else if (strcmp("--mmdordering", argv[i]) == 0)
-        {
-            opts->randomordering = 0;
-            opts->mortonordering = 0;
-            opts->kdtreeordering = 0;
-            opts->hilbertordering = 0;
-            opts->mmdordering = 1;
+            i++;
+            std::string reordering = argv[i];
+            if (reordering == "random") opts->randomordering = 1;
+            else{
+                opts->randomordering = 0;
+                if (reordering == "morton") opts->mortonordering = 1;
+                if (reordering == "kdtree") opts->kdtreeordering = 1;
+                if (reordering == "hilbert") opts->hilbertordering = 1;
+                if (reordering == "mmd") opts->mmdordering = 1;
+            }
+            int _sum_ordering = opts->randomordering + opts->mortonordering + opts->kdtreeordering + opts->hilbertordering + opts->mmdordering;
+            if (_sum_ordering > 1){
+                std::cout << "Please only contain one permutation methods, you are containing " << _sum_ordering << std::endl;
+                exit(0);
+            }
         }
         // kernels
         else if ((strcmp("--kernel", argv[i]) == 0) && i + 1 < argc)
@@ -557,7 +601,7 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
         // ----- usage
         else if (strcmp("-h", argv[i]) == 0 || strcmp("--help", argv[i]) == 0)
         {
-            fprintf(stderr, "Helper doc is to be done.\n");
+            displayHelp();
             exit(0);
         }
         else

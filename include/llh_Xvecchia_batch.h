@@ -1,3 +1,19 @@
+/**
+ * @copyright (c) 2024- King Abdullah University of Science and
+ *                      Technology (KAUST). All rights reserved.
+ **/
+
+/**
+ * @file incase/llh_Xvecchia_batch
+
+ *
+ *
+ *
+ * @version 1.0.0
+ * @author Qilong Pan
+ * @date 2024-03-14
+ **/
+
 #ifndef LLH_XVECCHIA_BATCH_H
 #define LLH_XVECCHIA_BATCH_H
 

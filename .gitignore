@@ -14,3 +14,4 @@ test_kl.sh
 test_llh.sh
 test_simulation.sh
 *.sh
+*.csv
