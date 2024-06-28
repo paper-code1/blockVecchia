@@ -189,8 +189,9 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
             xy_path = opts.xy_path;
             z_path = opts.obs_path;
         }
-        
-        data.distance_metric = 1; // 1 for earth distance
+        if (opts.earth){
+            data.distance_metric = 1; // 1 for earth distance
+        }
         locations = loadXYcsv(xy_path, opts.num_loc);
         loadObscsv<T>(z_path, opts.num_loc, h_obs);
         // for(int i = 0; i < 10000; i++) printf("%ith %lf \n",i, h_obs[i]);
@@ -332,8 +333,8 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
         for (int i = 1; i < batchCount; ++i)
         {
             // how many previous points you would like to include in your nearest neighbor searching
-            int starting_loc = std::max(i - 100000, 0);
-            // int starting_loc = 0;
+            // int starting_loc = std::max(i - 100000, 0);
+            int starting_loc = 0;
             findNearestPoints(
                 h_obs_conditioning, locations_con,
                 locsCentroid, firstClusterCount,

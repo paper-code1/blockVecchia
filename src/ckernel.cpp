@@ -1034,7 +1034,7 @@ void core_dcmg(double* A, int m, int n,
 		j0 = 0;
 		for (j = 0; j < n; j++) {
 			expr = calculateDistance(l1, l2, i0, j0, distance_metric, 0) / localtheta[1];
-			expr /= 9348.317; /*comment it for real dataset, 2523.64 wind, 9348.317 soil*/ 
+			// expr /= 9348.317; /*comment it for real dataset, 2523.64 wind, 9348.317 soil*/ 
 			// printf("%lf \n", expr);
 			if (expr == 0)
 				A[i + j * m] = sigma_square /*+ 1e-4*/;
@@ -2193,6 +2193,26 @@ void core_dcmg_non_stat(double* A, int m, int n, int m0, int n0, location* l1, l
 			double prod1 = 2 * sqrt(neuij * Qij);
 			double term3 = matern_util(1, neuij, prod1);
 			A[i + j * m] = term1 * term2 * term3;
+		}
+	}
+}
+
+void core_dcmg_matern12(double *A, int m, int n,
+						  location *l1, location *l2,
+						  const double *localtheta)
+{
+	double sigma_square = localtheta[0]; // * localtheta[0];
+	double scaled_distance = 0.0;
+
+	for (int i = 0; i < m; i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			scaled_distance = sqrt((l1->x[i] - l2->x[j]) * (l1->x[i] - l2->x[j]) +
+								   (l1->y[i] - l2->y[j]) * (l1->y[i] - l2->y[j])) /
+							  localtheta[1];
+			// scaled_distance /= 9348.317; /*comment it for real dataset, 2523.64 wind, 9348.317 soil*/
+			A[i + j * m] = sigma_square * exp(-scaled_distance); // Matern Function nu = 0.5
 		}
 	}
 }

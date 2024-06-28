@@ -37,6 +37,7 @@ void displayHelp() {
               << "  --knn                 nearest neighbors searching, default to use.\n"
               << "  --perf                Only calculate the one iteraion of block/classic Vecchia and obs=0.\n"
               << "  --seed                [int] random generation for locations and observations.\n"
+              << "  --earth               [int] representing GC distance.\n"
               << "  --xy_path             [string] locations path.\n"
               << "  --obs_path            [string] observations path.\n"
               << "  --tol                 [int] tolerance of BOBYQA, 5 -> 1e-5.\n"
@@ -185,6 +186,7 @@ extern "C"
         int kernel;
         int num_params;
         int num_loc;
+        int earth;
 
         // bivariate
         int p;
@@ -306,6 +308,7 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
     // gpu config, Round up LDDA on GPU to multiple of align, default 32
     opts->align = 32;
     opts->device = 0; // default is 0,
+    opts->earth = 0;
 
     // BLAS
     opts->uplo = MagmaLower;
@@ -388,6 +391,11 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
         else if (strcmp("--knn", argv[i]) == 0 && i + 1 < argc)
         {
             opts->knn = 1;
+        }
+        // earth distance
+        else if (strcmp("--earth", argv[i]) == 0 && i + 1 < argc)
+        {
+            opts->earth = 1;
         }
         // ordering
         else if (strcmp("--permutation", argv[i]) == 0 && i + 1 < argc)

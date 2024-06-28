@@ -122,13 +122,14 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
         loc_batch->y = data->locations_new->y + batchNumAccum[i];
         loc_batch->z = NULL;
         // printLocations(data->batchNum[i], loc_batch);
-        core_dcmg(data->h_Cov + batchNumSquareAccum[i],
+        core_dcmg(h_Cov + batchNumSquareAccum[i],
                   batchNum[i], // each single  batch size
                   batchNum[i],
                   loc_batch, // starting of the locations_new
                   loc_batch,
                   localtheta, data->distance_metric);
         // printVectorCPU(data->Cm, data->h_obs_new, data->ldc, i);
+        // printMatrixCPU(batchNum[i], batchNum[i], h_Cov + batchNumSquareAccum[i], h_lda[i], i);
         free(loc_batch);
     }
     // h_Cov_cross: \sigma_{12} and h_Cov_conditioning: \sigma_{22}
@@ -430,7 +431,6 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
     {
         _llk_tmp = -(norm2_result_h[k] * norm2_result_h[k] + logdet_result_h[k] + batchNum[k] * log(2 * PI)) * 0.5;
         llk += _llk_tmp;
-        // fprintf(stderr, "%dth location is %lf %lf \n", k, data->locations_new->x[cs + k], data->locations_new->y[cs + k]);
         // fprintf(stderr, "%dth log determinant is % lf\n", k, logdet_result_h[k]);
         // fprintf(stderr, "%dth dot product is % lf\n", k, norm2_result_h[k] * norm2_result_h[k]);
         // fprintf(stderr, "%dth pi is % lf\n", k, batchNum[k] * log(2 * PI));

@@ -681,7 +681,10 @@ extern "C"
     void core_dcmg_trivariate_parsimonious(double *A, int m, int n,
                                            int m0, int n0, location *l1,
                                            location *l2, double *localtheta, int distance_metric);
-
+    // Generate the covariance matrix.
+    void core_dcmg_matern12(double *A, int m, int n,
+                   location *l1, location *l2,
+                   const double *localtheta);
 #ifdef __cplusplus
 }
 #endif
