@@ -47,6 +47,7 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
     int *d_const1 = data->d_const1;
     int *d_batchNum = data->d_batchNum;
     int total_size_dev_obs = data->total_size_dev_obs;
+    int z_flag = data->time_flag ? 1 : 0; // 1: time/ 3D; 0 : 2D
 
     // matrix and vectors
     double *h_Cov = data->h_Cov;
@@ -120,14 +121,26 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
         location *loc_batch = (location *)malloc(sizeof(location));
         loc_batch->x = data->locations_new->x + batchNumAccum[i];
         loc_batch->y = data->locations_new->y + batchNumAccum[i];
-        loc_batch->z = NULL;
+        loc_batch->z = data->time_flag ? (data->locations_new->z + batchNumAccum[i]) : NULL;
         // printLocations(data->batchNum[i], loc_batch);
-        core_dcmg(h_Cov + batchNumSquareAccum[i],
-                  batchNum[i], // each single  batch size
-                  batchNum[i],
-                  loc_batch, // starting of the locations_new
-                  loc_batch,
-                  localtheta, data->distance_metric);
+        if (data->time_flag && data->kernel == 4)
+        {
+            core_dcmg_spacetime_matern(h_Cov + batchNumSquareAccum[i],
+                                       batchNum[i], // each single  batch size
+                                       batchNum[i],
+                                       loc_batch, // starting of the locations_new
+                                       loc_batch,
+                                       localtheta, data->distance_metric);
+        }
+        else
+        {
+            core_dcmg(h_Cov + batchNumSquareAccum[i],
+                      batchNum[i], // each single  batch size
+                      batchNum[i],
+                      loc_batch, // starting of the locations_new
+                      loc_batch,
+                      localtheta, data->distance_metric, z_flag);
+        }
         // printVectorCPU(data->Cm, data->h_obs_new, data->ldc, i);
         // printMatrixCPU(batchNum[i], batchNum[i], h_Cov + batchNumSquareAccum[i], h_lda[i], i);
         free(loc_batch);
@@ -144,22 +157,39 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
             location *loc_batch = (location *)malloc(sizeof(location));
             loc_batch_con->x = data->locations_con->x + i * cs;
             loc_batch_con->y = data->locations_con->y + i * cs;
-            loc_batch_con->z = NULL;
+            loc_batch_con->z = data->time_flag ? (data->locations_con->z + i * cs) : NULL;
             loc_batch->x = data->locations_new->x + batchNumAccum[i];
             loc_batch->y = data->locations_new->y + batchNumAccum[i];
-            loc_batch->z = NULL;
+            loc_batch->z = data->time_flag ? (data->locations_new->z + batchNumAccum[i]) : NULL;
             // printLocations(cs, loc_batch_con);
-            //*h_Cov_conditioning: \sigma_{22}
-            core_dcmg(h_Cov_conditioning + i * cs * cs,
-                      cs, cs,
-                      loc_batch_con,
-                      loc_batch_con, localtheta, data->distance_metric);
-            // *h_Cov_cross: \sigma_{21}
-            // printLocations(data->batchNum[i], loc_batch);
-            core_dcmg(h_Cov_cross + cs * batchNumAccum[i],
-                      cs, batchNum[i],
-                      loc_batch_con,
-                      loc_batch, localtheta, data->distance_metric);
+            if (data->time_flag && data->kernel == 4)
+            {
+                //*h_Cov_conditioning: \sigma_{22}
+                core_dcmg_spacetime_matern(h_Cov_conditioning + i * cs * cs,
+                                           cs, cs,
+                                           loc_batch_con,
+                                           loc_batch_con, localtheta, data->distance_metric);
+                // *h_Cov_cross: \sigma_{21}
+                // printLocations(data->batchNum[i], loc_batch);
+                core_dcmg_spacetime_matern(h_Cov_cross + cs * batchNumAccum[i],
+                                           cs, batchNum[i],
+                                           loc_batch_con,
+                                           loc_batch, localtheta, data->distance_metric);
+            }
+            else
+            {
+                //*h_Cov_conditioning: \sigma_{22}
+                core_dcmg(h_Cov_conditioning + i * cs * cs,
+                          cs, cs,
+                          loc_batch_con,
+                          loc_batch_con, localtheta, data->distance_metric, z_flag);
+                // *h_Cov_cross: \sigma_{21}
+                // printLocations(data->batchNum[i], loc_batch);
+                core_dcmg(h_Cov_cross + cs * batchNumAccum[i],
+                          cs, batchNum[i],
+                          loc_batch_con,
+                          loc_batch, localtheta, data->distance_metric, z_flag);
+            }
             // printf("The conditioning covariance matrix.\n");
             // printMatrixCPU(cs, batchNum[i], h_Cov_cross + cs * batchNum[i], h_ldacon[0], i);
             free(loc_batch);
@@ -359,6 +389,9 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
 
             // printMatrixGPU(h_lda[i], h_lda[i], h_Cov_array[i], h_ldda[i], i);
             // printMatrixGPU(h_lda[i], h_lda[i], h_Cov_offset_array[i], h_ldda[i], i);
+            // if(h_lda[i] > h_ldda[i] || 1 > h_ldda[i]){
+            //         printf("Error: leading dimension lda (%d) is less than the number of rows (%d).\n", h_ldda[i], h_lda[i]);
+            // }
             magmablas_dgeadd(h_lda[i], h_lda[i],
                              -1.,
                              h_Cov_offset_array[i], h_ldda[i], // d_ldda[i]
@@ -398,7 +431,7 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
         d_Cov_array, d_ldda,
         dinfo_magma, batchCount,
         queue);
-    // triangular solution: L Z_new <- Z_old
+    // // triangular solution: L Z_new <- Z_old
     // for (int i = 0; i < 10; i++)
     // {
     //     printMatrixGPU(h_lda[i], h_lda[i], h_Cov_array[i], h_ldda[i], i);
@@ -458,7 +491,7 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
         }
         else if (data->kernel == 4)
         {
-            printf("%dth Model Parameters (Variance1, Variance2, range, smoothness1, smoothness2, beta): (%lf, %lf, %lf, %lf, %lf, %lf) -> Loglik: %lf \n",
+            printf("%dth Model Parameters (Variance, beta, nu, beta_time, nu_time, sep): (%lf, %lf, %lf, %lf, %lf, %lf) -> Loglik: %lf \n",
                    data->iterations, localtheta[0], localtheta[1], localtheta[2],
                    localtheta[3], localtheta[4], localtheta[5], llk);
         }

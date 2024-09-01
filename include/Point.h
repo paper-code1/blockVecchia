@@ -17,7 +17,7 @@
 extern "C"
 {
 #endif
-#define DIM 2
+#define DIM 3 // 2: spatial 3: spatial temporal
 #define PI (3.141592653589793)
 #define earthRadiusKm (6371.0)
 
@@ -54,11 +54,11 @@ struct Point{
             coordinate /= (double)cardinality;
     }
 
-    void print(Point& p){
-        for (double d: p.coordinates){
+    void print() const{
+        for (double d: coordinates){
             std::cout<<d<<" ";
         }
-        std::cout<<p.cluster;
+        std::cout<<cluster;
         std::cout<<std::endl;
     }
 

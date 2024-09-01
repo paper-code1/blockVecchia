@@ -40,11 +40,14 @@ inline std::vector<Point> random_initializer (const std::vector<Point>& points, 
     std::uniform_int_distribution<> distrib(0, points.size());
     int i = 0;
 
+    // for (auto & point: points) point.print();
+
     while (centroids.size()<k) {
         Point new_centroid = points[distrib(gen)];
         if (!contatins(centroids, new_centroid)) {
             new_centroid.cluster=i;
             i++;
+            // new_centroid.print();
             centroids.push_back(new_centroid);
         }
     }

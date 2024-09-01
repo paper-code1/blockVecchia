@@ -14,7 +14,6 @@
  * @date 2024-03-14
  **/
 
-
 #ifndef VECCHIA_HELPER_H
 #define VECCHIA_HELPER_H
 
@@ -24,7 +23,8 @@
 #include "magma_v2.h"
 
 // Function to display help text
-void displayHelp() {
+void displayHelp()
+{
     std::cout << "Usage: test_dvecchia_batch [options]\n"
               << "Options:\n"
               << "  --help                Display this help message and exit\n"
@@ -37,12 +37,14 @@ void displayHelp() {
               << "  --knn                 nearest neighbors searching, default to use.\n"
               << "  --perf                Only calculate the one iteraion of block/classic Vecchia and obs=0.\n"
               << "  --seed                [int] random generation for locations and observations.\n"
+              << "  --3D                  [bool] 3D profile spatial modeling.\n"
               << "  --earth               [int] representing GC distance.\n"
               << "  --xy_path             [string] locations path.\n"
               << "  --obs_path            [string] observations path.\n"
               << "  --tol                 [int] tolerance of BOBYQA, 5 -> 1e-5.\n"
+              << "  --t_slots             [int] The slot of time, e.g., 10, 20, satisfying num_loc % t_slots = 0.\n"
               << "  --omp_threads         [int] number openmp threads, default 40.\n"
-              << "  --permutation         [string] reordering method, default as random, (optional) kdtree, morton, hilber.\n"
+              << "  --permutation         [string] reordering method, default as random, (optional) kdtree, morton, hilber, mmd.\n"
               // Add more options as necessary
               << std::endl;
 }
@@ -119,6 +121,11 @@ typedef struct llh_data
     double sigma;
     double beta;
     double nu;
+    bool time_flag;
+    double beta_time;
+    double nu_time;
+    double sep;
+    double aux;
     int kernel;
     int num_params;
     int seed;
@@ -129,11 +136,11 @@ typedef struct llh_data
     double *norm2_result_h;
     double *logdet_result_h;
     int vecchia;
-    int iterations;            // optimization
-    int omp_threads;           // openmp
+    int iterations;  // optimization
+    int omp_threads; // openmp
     // double vecchia_time_total; // vecchia time monitoring
-    int distance_metric;       // 0 for euclidean; 1 for earth location. (real dataset)
-    int perf;                  // performance
+    int distance_metric; // 0 for euclidean; 1 for earth location. (real dataset)
+    int perf;            // performance
     double *localtheta;
 } llh_data;
 
@@ -167,6 +174,17 @@ extern "C"
         double alpha;
         double nu1;
         double nu2;
+        // space-time
+        double beta_time;
+        double nu_time;
+        double sep;
+        double aux;
+        bool time_flag;
+        double beta_time_init;
+        double nu_time_init;
+        double sep_init;
+        double aux_init;
+        int t_slots;
 
         // performance test
         int perf;
@@ -244,11 +262,12 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
     // opts->obs_path;
 
     // extra config
-    // 1: univaraite or 2: bivariate
+    // 1: univaraite or 2: bivariate 3: time-space
     opts->kernel = 1;
     opts->num_params = 3;
     opts->num_loc = 2000;
     opts->p = 1;
+    opts->time_flag = 0;
 
     // local theta for kernel in GPs
     opts->sigma = 1.0;
@@ -268,6 +287,17 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
     opts->alpha = 0.1;
     opts->nu1 = 0.1;
     opts->nu2 = 0.1;
+
+    // space-time
+    opts->nu_time = 0.5;   // smoothness (0,1]
+    opts->beta_time = 2.2; // scaling
+    opts->sep = 0.5;       // non-seperatbility [0, 1]
+    opts->aux = 0.;        // auxi para [0, +inf]
+    opts->nu_time_init = 0.01;
+    opts->beta_time_init = 0.01;
+    opts->sep_init = 0.01;
+    opts->aux_init = 0.;
+    opts->t_slots = 0; // e.g. 10
 
     // k nearest neighbors
     opts->knn = 1;
@@ -324,13 +354,15 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
         // --------- problem setting  --------- //
         //-------------------------------------//
         // real dataset input
-        if (strcmp(argv[i], "--xy_path") == 0 && i + 1 < argc) {
+        if (strcmp(argv[i], "--xy_path") == 0 && i + 1 < argc)
+        {
             i++;
             opts->xy_path = argv[i]; // The next argument is the path
             std::cout << "xy_path: " << opts->xy_path << std::endl;
         }
         // real dataset input
-        else if (strcmp(argv[i], "--obs_path") == 0 && i + 1 < argc) {
+        else if (strcmp(argv[i], "--obs_path") == 0 && i + 1 < argc)
+        {
             i++;
             opts->obs_path = argv[i]; // The next argument is the path
             std::cout << "obs_path: " << opts->obs_path << std::endl;
@@ -392,6 +424,12 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
         {
             opts->knn = 1;
         }
+        // 3D spatial
+        else if (strcmp("--3D", argv[i]) == 0 && i + 1 < argc)
+        {
+            opts->time_flag = 1;
+            opts->t_slots = 0;
+        }
         // earth distance
         else if (strcmp("--earth", argv[i]) == 0 && i + 1 < argc)
         {
@@ -402,16 +440,23 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
         {
             i++;
             std::string reordering = argv[i];
-            if (reordering == "random") opts->randomordering = 1;
-            else{
+            if (reordering == "random")
+                opts->randomordering = 1;
+            else
+            {
                 opts->randomordering = 0;
-                if (reordering == "morton") opts->mortonordering = 1;
-                if (reordering == "kdtree") opts->kdtreeordering = 1;
-                if (reordering == "hilbert") opts->hilbertordering = 1;
-                if (reordering == "mmd") opts->mmdordering = 1;
+                if (reordering == "morton")
+                    opts->mortonordering = 1;
+                if (reordering == "kdtree")
+                    opts->kdtreeordering = 1;
+                if (reordering == "hilbert")
+                    opts->hilbertordering = 1;
+                if (reordering == "mmd")
+                    opts->mmdordering = 1;
             }
             int _sum_ordering = opts->randomordering + opts->mortonordering + opts->kdtreeordering + opts->hilbertordering + opts->mmdordering;
-            if (_sum_ordering > 1){
+            if (_sum_ordering > 1)
+            {
                 std::cout << "Please only contain one permutation methods, you are containing " << _sum_ordering << std::endl;
                 exit(0);
             }
@@ -443,21 +488,38 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
                 opts->num_params = 4; //
                 opts->p = 1;          // Modify as needed for 'powexp'
             }
+            else if (strcmp(kernel_str, "univariate_matern_spacetime_stationary") == 0)
+            {
+                fprintf(stderr, "You are using the space-time Kernel (sigma^2, range_spatial, smooth_spatial, range_time, smooth_time, seperability, aux)!\n");
+                opts->kernel = 4;     //
+                opts->num_params = 7; // auxi = 0;
+                opts->p = 1;          // Modify as needed for 'powexp'
+                opts->time_flag = 1;
+            }
             else
             {
                 fprintf(stderr, "Unsupported kernel type: %s\n", kernel_str);
                 exit(1);
             }
         }
+        // conditioning size
+        else if ((strcmp("--t_slots", argv[i]) == 0) && i + 1 < argc)
+        {
+            i++;
+            int num;
+            info = sscanf(argv[i], "%d", &num);
+            if (info == 1 && num >= 0)
+                opts->t_slots = num;
+        }
         // ture parameters
         else if (strcmp("--ikernel", argv[i]) == 0 && i + 1 < argc)
         {
             i++;
-            double a1 = -1, a2 = -1, a3 = -1, a4 = -1; // Initialize with default values indicating 'unknown'
-            char s1[10], s2[10], s3[10], s4[10];       // Arrays to hold the string representations
+            double a1 = -1, a2 = -1, a3 = -1, a4 = -1, a5 = -1, a6 = -1; // Initialize with default values indicating 'unknown'
+            char s1[10], s2[10], s3[10], s4[10], s5[10], s6[10];         // Arrays to hold the string representations
             // Parse the input into string buffers
-            int info = sscanf(argv[i], "%9[^:]:%9[^:]:%9[^:]:%9[^:]", s1, s2, s3, s4);
-            if (info < 3 || info > 4)
+            int info = sscanf(argv[i], "%9[^:]:%9[^:]:%9[^:]:%9[^:]:%9[^:]:%9[^:]", s1, s2, s3, s4, s5, s6);
+            if (info < 3 || info > 6)
             {
                 printf("Other kernels have been developing on the way!");
                 exit(0);
@@ -469,10 +531,14 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
                 a2 = atof(s2);
             if (strcmp(s3, "?") != 0)
                 a3 = atof(s3);
-            if (info == 4)
+            if (strcmp(s4, "?") != 0)
+                a4 = atof(s4);
+            if (info == 6)
             {
-                if (strcmp(s4, "?") != 0)
-                    a4 = atof(s4);
+                if (strcmp(s5, "?") != 0)
+                    a5 = atof(s5);
+                if (strcmp(s6, "?") != 0)
+                    a6 = atof(s6);
             }
             // Assign values to opts if they are not unknown
             if (a1 != -1)
@@ -481,25 +547,25 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
                 opts->beta = a2;
             if (a3 != -1)
                 opts->nu = a3;
-            if (info == 4)
+            if (a4 != -1)
+                opts->nugget = a4;
+            if (info == 6)
             {
                 if (a4 != -1)
-                    opts->nugget = a4;
+                    opts->beta_time = a4;
+                if (a5 != -1)
+                    opts->nu_time = a5;
+                if (a6 != -1)
+                    opts->sep = a6;
             }
         }
         // initi parameters
         else if (strcmp("--kernel_init", argv[i]) == 0 && i + 1 < argc)
         {
             i++;
-            double a1 = -1, a2 = -1, a3 = -1, a4 = -1; // Initialize with default values indicating 'unknown'
-            char s1[10], s2[10], s3[10], s4[10];       // Arrays to hold the string representations
-            // Parse the input into string buffers
-            int info = sscanf(argv[i], "%11[^:]:%11[^:]:%11[^:]:%11[^:]", s1, s2, s3, s4);
-            if (info < 3 || info > 4)
-            {
-                printf("Other kernels have been developing on the way!");
-                exit(0);
-            }
+            double a1 = -1, a2 = -1, a3 = -1, a4 = -1, a5 = -1, a6 = -1; 
+            char s1[10], s2[10], s3[10], s4[10], s5[10], s6[10];         
+            int info = sscanf(argv[i], "%9[^:]:%9[^:]:%9[^:]:%9[^:]:%9[^:]:%9[^:]", s1, s2, s3, s4, s5, s6);
             // Check and convert each value
             if (strcmp(s1, "?") != 0)
                 a1 = atof(s1);
@@ -507,10 +573,14 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
                 a2 = atof(s2);
             if (strcmp(s3, "?") != 0)
                 a3 = atof(s3);
-            if (info == 4)
+            if (strcmp(s4, "?") != 0)
+                a4 = atof(s4);
+            if (info == 6)
             {
-                if (strcmp(s4, "?") != 0)
-                    a4 = atof(s4);
+                if (strcmp(s5, "?") != 0)
+                    a5 = atof(s5);
+                if (strcmp(s6, "?") != 0)
+                    a6 = atof(s6);
             }
             // Assign values to opts if they are not unknown
             if (a1 != -1)
@@ -519,13 +589,19 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
                 opts->beta_init = a2;
             if (a3 != -1)
                 opts->nu_init = a3;
-            if (info == 4)
+            if (a4 != -1)
+                opts->nugget_init = a4;
+            if (info == 6)
             {
                 if (a4 != -1)
-                    opts->nugget_init = a4;
+                    opts->beta_time_init = a4;
+                if (a5 != -1)
+                    opts->nu_time_init = a5;
+                if (a6 != -1)
+                    opts->sep_init = a6;
             }
         }
-        // iiregular locations generation seeds
+        // irregular locations generation seeds
         else if ((strcmp("--seed", argv[i]) == 0) && i + 1 < argc)
         {
             i++;

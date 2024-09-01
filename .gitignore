@@ -1,8 +1,10 @@
 bin/*
 trash/
 log/
+windspeed_3d/
 obj/*
 .vscode/
+.history/
 fig/
 simu_ds/
 soil_moist/

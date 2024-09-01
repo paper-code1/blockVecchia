@@ -38,6 +38,7 @@ extern "C"
     } location;
 
     location *GenerateXYLoc(int n, int seed);
+    location *GenerateXYLoc_ST(int n, int t_slots, int seed);
 
     static uint32_t Part1By1(uint32_t x)
     //! Spread lower bits of input
@@ -301,7 +302,6 @@ extern "C"
         double *w = (double *)malloc(n * sizeof(double));
         struct arr *dat = (struct arr *)malloc(n * sizeof(struct arr));
         double x[n], y[n];
-        // double *w2 = (double *) malloc (n * sizeof(double));
 
         // Encode data into vector z
 
@@ -443,10 +443,11 @@ extern "C"
     }
 
     // mmd
-    static void zsort_locations_mmd(int n, location *locations, double *w)
+    static void zsort_locations_mmd(int n, location *locations)
     //! Sort in MMD order (input points must be in [0;1]x[0;1] square])
     {
         int res[n], flag[n];
+        double *w = (double *)malloc(n * sizeof(double));
         struct arr *dat = (struct arr *)malloc(n * sizeof(struct arr));
         int n_measurement = 1;
 
@@ -521,6 +522,489 @@ extern "C"
         }
     }
 
+    // 3D reordering
+    struct comb_3d
+    { // location and measure
+        uint64_t Z;
+        double w;
+    };
+    static uint64_t Part1By3(uint64_t x)
+    // Spread lower bits of input
+    {
+        x &= 0x000000000000ffff;
+        // x = ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- fedc ba98 7654 3210
+        x = (x ^ (x << 24)) & 0x000000ff000000ff;
+        // x = ---- ---- ---- ---- ---- ---- fedc ba98 ---- ---- ---- ---- ---- ---- 7654 3210
+        x = (x ^ (x << 12)) & 0x000f000f000f000f;
+        // x = ---- ---- ---- fedc ---- ---- ---- ba98 ---- ---- ---- 7654 ---- ---- ---- 3210
+        x = (x ^ (x << 6)) & 0x0303030303030303;
+        // x = ---- --fe ---- --dc ---- --ba ---- --98 ---- --76 ---- --54 ---- --32 ---- --10
+        x = (x ^ (x << 3)) & 0x1111111111111111;
+        // x = ---f ---e ---d ---c ---b ---a ---9 ---8 ---7 ---6 ---5 ---4 ---3 ---2 ---1 ---0
+        return x;
+    }
+    static uint64_t EncodeMorton3(uint64_t x, uint64_t y, uint64_t z)
+    // Encode 3 inputs into one
+    {
+        return (Part1By3(z) << 2) + (Part1By3(y) << 1) + Part1By3(x);
+    }
+    static uint64_t Compact1By3(uint64_t x)
+    // Collect every 4-th bit into lower part of input
+    {
+        x &= 0x1111111111111111;
+        // x = ---f ---e ---d ---c ---b ---a ---9 ---8 ---7 ---6 ---5 ---4 ---3 ---2 ---1 ---0
+        x = (x ^ (x >> 3)) & 0x0303030303030303;
+        // x = ---- --fe ---- --dc ---- --ba ---- --98 ---- --76 ---- --54 ---- --32 ---- --10
+        x = (x ^ (x >> 6)) & 0x000f000f000f000f;
+        // x = ---- ---- ---- fedc ---- ---- ---- ba98 ---- ---- ---- 7654 ---- ---- ---- 3210
+        x = (x ^ (x >> 12)) & 0x000000ff000000ff;
+        // x = ---- ---- ---- ---- ---- ---- fedc ba98 ---- ---- ---- ---- ---- ---- 7654 3210
+        x = (x ^ (x >> 24)) & 0x000000000000ffff;
+        // x = ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- fedc ba98 7654 3210
+        return x;
+    }
+    static uint64_t DecodeMorton3X(uint64_t code)
+    // Decode first input
+    {
+        return Compact1By3(code >> 0);
+    }
+    static uint64_t DecodeMorton3Y(uint64_t code)
+    // Decode second input
+    {
+        return Compact1By3(code >> 1);
+    }
+    static uint64_t DecodeMorton3Z(uint64_t code)
+    // Decode third input
+    {
+        return Compact1By3(code >> 2);
+    }
+    static uint64_t EncodeHilbert3(uint64_t x, uint64_t y, uint64_t z)
+    {
+        uint16_t M = 1 << 15, P, Q, t;
+        for (Q = M; Q > 1; Q >>= 1)
+        {
+            P = Q - 1;
+            if (x & Q)
+                x ^= P;
+            else
+            {
+                t = (x ^ x) & P;
+                x ^= t;
+                x ^= t;
+            }
+            if (y & Q)
+                x ^= P;
+            else
+            {
+                t = (x ^ y) & P;
+                x ^= t;
+                y ^= t;
+            }
+            if (z & Q)
+                x ^= P;
+            else
+            {
+                t = (x ^ z) & P;
+                x ^= t;
+                z ^= t;
+            }
+        }
+        y ^= x;
+        z ^= y;
+        t = 0;
+        for (Q = M; Q > 1; Q >>= 1)
+            if (z & Q)
+                t ^= Q - 1;
+        x ^= t;
+        y ^= t;
+        z ^= t;
+        uint64_t result = 0;
+        uint64_t res;
+        // printf("%" PRIu64 ", %" PRIu64 ", %" PRIu64 " \n", x, y, z);
+        for (int i = 0; i < 16; i++)
+        {
+            res = x >> (15 - i) & 1;
+            result |= res << (47 - i * 3);
+            res = y >> (15 - i) & 1;
+            result |= res << (47 - (i * 3 + 1));
+            res = z >> (15 - i) & 1;
+            result |= res << (47 - (i * 3 + 2));
+        }
+        return (result);
+    }
+    static uint64_t *DecodeHilbert3(uint64_t result)
+    {
+        uint64_t N = 2 << 15, P, Q, t;
+        uint64_t x = 0, y = 0, z = 0;
+        static uint64_t X[3] = {0, 0, 0};
+        uint64_t res;
+        result = result << 16;
+        for (int i = 0; i < 16; i++)
+        {
+            res = result >> 63 & 1;
+            result = result << 1;
+            x |= res << (15 - i);
+            res = result >> 63 & 1;
+            result = result << 1;
+            y |= res << (15 - i);
+            res = result >> 63 & 1;
+            result = result << 1;
+            z |= res << (15 - i);
+        }
+        t = z >> 1;
+        z ^= y;
+        y ^= x;
+        x ^= t;
+        for (Q = 2; Q != N; Q <<= 1)
+        {
+            P = Q - 1;
+            if (z & Q)
+                x ^= P;
+            else
+            {
+                t = (x ^ z) & P;
+                x ^= t;
+                z ^= t;
+            }
+            if (y & Q)
+                x ^= P;
+            else
+            {
+                t = (x ^ y) & P;
+                x ^= t;
+                y ^= t;
+            }
+            if (x & Q)
+                x ^= P;
+            else
+            {
+                t = 0 & P;
+                x ^= t;
+                x ^= t;
+            }
+        }
+        X[0] = x;
+        X[1] = y;
+        X[2] = z;
+        return X;
+    }
+    static int cmpfunc_loc_3d(const void *a, const void *b)
+    {
+        struct comb_3d _a = *(const struct comb_3d *)a;
+        struct comb_3d _b = *(const struct comb_3d *)b;
+        if (_a.Z < _b.Z)
+            return -1;
+        if (_a.Z == _b.Z)
+            return 0;
+        return 1;
+    }
+    struct tree_3d
+    {
+        int dim;
+        double x, y, z;
+        double w;
+        struct tree_3d *left, *right;
+    };
+
+    struct arr_3d
+    {
+        double x, y, z;
+        double w;
+    };
+
+    static int cmpfunc_x_3d(const void *a, const void *b)
+    {
+        struct arr_3d _a = *(const struct arr_3d *)a;
+        struct arr_3d _b = *(const struct arr_3d *)b;
+        if (_a.x < _b.x)
+            return -1;
+        if (_a.x == _b.x)
+            return 0;
+        return 1;
+    }
+
+    static int cmpfunc_y_3d(const void *a, const void *b)
+    {
+        struct arr_3d _a = *(const struct arr_3d *)a;
+        struct arr_3d _b = *(const struct arr_3d *)b;
+        if (_a.y < _b.y)
+            return -1;
+        if (_a.y == _b.y)
+            return 0;
+        return 1;
+    }
+
+    static int cmpfunc_z_3d(const void *a, const void *b)
+    {
+        struct arr_3d _a = *(const struct arr_3d *)a;
+        struct arr_3d _b = *(const struct arr_3d *)b;
+        if (_a.z < _b.z)
+            return -1;
+        if (_a.z == _b.z)
+            return 0;
+        return 1;
+    }
+
+    static struct tree_3d *initialize_3d(int len, struct arr_3d *dat, int depth)
+    {
+        if (len < 1)
+            return NULL;
+        if (len == 1)
+        {
+            struct tree_3d *root = (struct tree_3d *)malloc(sizeof(struct tree_3d));
+            root->dim = -1;
+            root->x = dat[0].x;
+            root->y = dat[0].y;
+            root->z = dat[0].z;
+            root->w = dat[0].w;
+            root->left = NULL;
+            root->right = NULL;
+            return root;
+        }
+        struct tree_3d *root = (struct tree_3d *)malloc(sizeof(struct tree_3d));
+        // int dim = (x[end] - x[start] > y[end] - y[start]) ? 1 : 2;
+        int dim = depth % 3;
+        root->dim = dim;
+        int mid = len / 2;
+        // printf("length: %d, mid: %f\n", len, dat[mid].x);
+        if (dim == 0)
+            qsort(dat, len, sizeof(struct arr_3d), cmpfunc_x_3d);
+        else if (dim == 1)
+            qsort(dat, len, sizeof(struct arr_3d), cmpfunc_y_3d);
+        else
+            qsort(dat, len, sizeof(struct arr_3d), cmpfunc_z_3d);
+        // printf("length: %d, mid: %f\n", len, dat[mid].x);
+        if (dim == 0)
+            root->x = dat[mid].x;
+        else if (dim == 1)
+            root->y = dat[mid].y;
+        else if (dim == 2)
+            root->z = dat[mid].z;
+        struct arr_3d *ldat = (struct arr_3d *)malloc(mid * sizeof(struct arr_3d));
+        struct arr_3d *rdat = (struct arr_3d *)malloc((len - mid) * sizeof(struct arr_3d));
+        memcpy(ldat, dat, mid * sizeof(struct arr_3d));
+        memcpy(rdat, dat + mid, (len - mid) * sizeof(struct arr_3d));
+        free(dat);
+        root->left = initialize_3d(mid, ldat, depth + 1);
+        root->right = initialize_3d(len - mid, rdat, depth + 1);
+        return root;
+    }
+
+    static int traverse_3d(struct tree_3d *root, int i, double *x, double *y, double *z, double *w)
+    {
+        if (root->left != NULL)
+            i = traverse_3d(root->left, i, x, y, z, w);
+        if (root->dim == -1)
+        {
+            // printf("%d\n", i);
+            x[i] = root->x;
+            y[i] = root->y;
+            z[i] = root->z;
+            w[i++] = root->w;
+        }
+        if (root->right != NULL)
+            i = traverse_3d(root->right, i, x, y, z, w);
+        return i;
+    }
+
+    // random ordering 3D
+    static void random_reordering_3d(int size, location *loc)
+    {
+        int your_seed_value = 42; // Set your desired seed value
+
+        srand(your_seed_value);
+
+        for (int i = size - 1; i > 0; i--)
+        {
+            int j = rand() % (i + 1);
+            // Swap x values
+            double tempX = loc->x[i];
+            loc->x[i] = loc->x[j];
+            loc->x[j] = tempX;
+
+            // Swap y values
+            double tempY = loc->y[i];
+            loc->y[i] = loc->y[j];
+            loc->y[j] = tempY;
+
+            // Swap z values
+            double tempZ = loc->z[i];
+            loc->z[i] = loc->z[j];
+            loc->z[j] = tempZ;
+
+            // // Swap obs values
+            // double tempObs = h_C[i];
+            // h_C[i] = h_C[j];
+            // h_C[j] = tempObs;
+        }
+    }
+
+    // morton 3D
+    static void zsort_locations_morton_3d(int n, location *locations)
+    //! Sort in Morton order 3d (input points must be in [0;1]x[0;1]x[0;1] sphere])
+    {
+        int i;
+        uint16_t x, y, z;
+        struct comb_3d *dat = (struct comb_3d *)malloc(n * sizeof(struct comb_3d));
+        //  Encode data into vector z
+        for (i = 0; i < n; i++)
+        {
+            x = (uint16_t)(locations->x[i] * (double)UINT16_MAX + .5);
+            y = (uint16_t)(locations->y[i] * (double)UINT16_MAX + .5);
+            z = (uint16_t)(locations->z[i] * (double)UINT16_MAX + .5);
+            dat[i].Z = EncodeMorton3(x, y, z);
+        }
+        // Sort vector z
+        qsort(dat, n, sizeof(struct comb_3d), cmpfunc_loc_3d);
+        // Decode data from vector z
+        for (i = 0; i < n; i++)
+        {
+            x = DecodeMorton3X(dat[i].Z);
+            y = DecodeMorton3Y(dat[i].Z);
+            z = DecodeMorton3Z(dat[i].Z);
+            locations->x[i] = (double)x / (double)UINT16_MAX;
+            locations->y[i] = (double)y / (double)UINT16_MAX;
+            locations->z[i] = (double)z / (double)UINT16_MAX;
+        }
+    }
+
+    // hilbert 3D
+    static void zsort_locations_hilbert_3d(int n, location *locations)
+    {
+        int i;
+        uint16_t x, y, z;
+        struct comb_3d *dat = (struct comb_3d *)malloc(n * sizeof(struct comb_3d));
+        for (i = 0; i < n; i++)
+        {
+            x = (uint16_t)(locations->x[i] * (double)UINT16_MAX + .5);
+            y = (uint16_t)(locations->y[i] * (double)UINT16_MAX + .5);
+            z = (uint16_t)(locations->z[i] * (double)UINT16_MAX + .5);
+            dat[i].Z = EncodeHilbert3(x, y, z);
+        }
+        //  Sort vector z
+        qsort(dat, n, sizeof(struct comb_3d), cmpfunc_loc_3d);
+        // Decode data from vector z
+        for (i = 0; i < n; i++)
+        {
+            uint64_t *X = DecodeHilbert3(dat[i].Z);
+            x = *X;
+            y = *(X + 1);
+            z = *(X + 2);
+            locations->x[i] = (double)x / (double)UINT16_MAX;
+            locations->y[i] = (double)y / (double)UINT16_MAX;
+            locations->z[i] = (double)z / (double)UINT16_MAX;
+        }
+    }
+
+    // kdtree 3D
+    static void zsort_locations_kdtree_3d(int n, location *locations)
+    {
+        int i;
+        struct arr_3d *dat = (struct arr_3d *)malloc(n * sizeof(struct arr_3d));
+        double x[n], y[n], z[n];
+        double *w = (double *)malloc(n * sizeof(double));
+
+        // Encode data into vector z
+        for (i = 0; i < n; i++)
+        {
+            dat[i].x = locations->x[i];
+            dat[i].y = locations->y[i];
+            dat[i].z = locations->z[i];
+        }
+        struct tree_3d *root = initialize_3d(n, dat, 0);
+        int index = traverse_3d(root, 0, x, y, z, w);
+
+        for (i = 0; i < n; i++)
+        {
+            locations->x[i] = x[i];
+            locations->y[i] = y[i];
+            locations->z[i] = z[i];
+        }
+    }
+
+    // mmd 3D
+    static void zsort_locations_mmd_3d(int n, location *locations)
+    {
+        int res[n], flag[n];
+        // double *w = (double *)malloc(n * sizeof(double));
+        struct arr_3d *dat = (struct arr_3d *)malloc(n * sizeof(struct arr_3d));
+        int n_measurement = 1;
+
+        for (int i = 0; i < n; i++)
+        {
+            dat[i].x = locations->x[i];
+            dat[i].y = locations->y[i];
+            dat[i].z = locations->z[i];
+            // dat[i].w = w[i];
+        }
+        double mindist = 3, x_mean = 0, y_mean = 0, z_mean = 0;
+        for (int i = 0; i < n; i++)
+        {
+            x_mean = x_mean + dat[i].x;
+            y_mean = y_mean + dat[i].y;
+            z_mean = z_mean + dat[i].z;
+        }
+        x_mean = x_mean / n;
+        y_mean = y_mean / n;
+        z_mean = z_mean / n;
+
+        for (int i = 0; i < n; i++)
+        {
+            flag[i] = 0;
+            double dist = pow(dat[i].x - x_mean, 2) + pow(dat[i].y - y_mean, 2) + pow(dat[i].z - z_mean, 2);
+            if (dist < mindist)
+            {
+                mindist = dist;
+                res[0] = i;
+            }
+        }
+        flag[res[0]] = 1;
+
+        for (int j = 1; j < n - 1; j++)
+        {
+            double max_list[n];
+            for (int i = 0; i < n; i++)
+            {
+                if (flag[i] != 1)
+                {
+                    // double min_list[j];
+                    double min_temp = 3;
+                    for (int k = 0; k < j; k++)
+                    {
+                        double temp = pow(dat[i].x - dat[res[k]].x, 2) + pow(dat[i].y - dat[res[k]].y, 2) + pow(dat[i].z - dat[res[k]].z, 2);
+                        if (temp < min_temp)
+                            min_temp = temp;
+                    }
+                    max_list[i] = min_temp;
+                }
+                else
+                    max_list[i] = 0;
+            }
+            double max_temp = 0;
+            int ind_temp = n;
+            for (int i = 0; i < n; i++)
+            {
+                if (max_temp < max_list[i])
+                {
+                    max_temp = max_list[i];
+                    ind_temp = i;
+                }
+            }
+            res[j] = ind_temp;
+            flag[res[j]] = 1;
+        }
+
+        for (int i = 0; i < n; i++)
+        {
+            if (flag[i] != 1)
+                res[n - 1] = i;
+            locations->x[i] = dat[res[i]].x;
+            locations->y[i] = dat[res[i]].y;
+            locations->z[i] = dat[res[i]].z;
+            // w[i] = dat[res[i]].w;
+        }
+    }
+
     // Generate the covariance matrix.
     void core_scmg(float *A, int m, int n,
                    int m0, int n0,
@@ -530,7 +1014,8 @@ extern "C"
     void core_dcmg(double *A, int m, int n,
                    //    int m0, int n0,
                    location *l1, location *l2,
-                   const double *localtheta, int distance_metric);
+                   const double *localtheta, int distance_metric,
+                   int z_flag);
 
     void core_sdcmg(double *A, int m, int n,
                     int m0, int n0,
@@ -543,7 +1028,7 @@ extern "C"
                            double *localtheta, int distance_metric);
 
     void core_dcmg_pow_exp(double *A, int m, int n,
-                        //    int m0, int n0,
+                           //    int m0, int n0,
                            location *l1, location *l2,
                            const double *localtheta, int distance_metric);
 
@@ -664,8 +1149,8 @@ extern "C"
                             int n0, location *l1, location *l2, double *localtheta, int distance_metric);
 
     void core_dcmg_spacetime_matern(double *A, int m, int n,
-                                    int m0, int n0, location *l1,
-                                    location *l2, double *localtheta, int distance_metric);
+                                    location *l1,
+                                    location *l2, const double *localtheta, int distance_metric);
 
     void core_dcmg_matern_ddnu_nu(double *A, int m, int n, int m0, int n0, location *l1, location *l2, double *localtheta,
                                   int distance_metric);
@@ -683,8 +1168,8 @@ extern "C"
                                            location *l2, double *localtheta, int distance_metric);
     // Generate the covariance matrix.
     void core_dcmg_matern12(double *A, int m, int n,
-                   location *l1, location *l2,
-                   const double *localtheta);
+                            location *l1, location *l2,
+                            const double *localtheta);
 #ifdef __cplusplus
 }
 #endif

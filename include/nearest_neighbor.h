@@ -73,35 +73,52 @@ static double distanceEarth(double lat1d, double lon1d, double lat2d, double lon
     return 2.0 * earthRadiusKm * asin(sqrt(u * u + cos(lat1r) * cos(lat2r) * v * v));
 }
 
-void findNearestPoints(double *h_obs_conditioning, location *locations_con, location *locsCentroid, int *firstClusterCount, double *h_obs_new, location *locations_new, int l0, int l1, int k, int i_block, int distance_metric) {
+void findNearestPoints(double *h_obs_conditioning, location *locations_con, location *locsCentroid, int *firstClusterCount, double *h_obs_new, location *locations_new, int l0, int l1, int k, int i_block, int distance_metric, bool time_flag)
+{
 
-    double *centroid = (double *)calloc(2, sizeof(double));
+    double *centroid = (double *)calloc(3, sizeof(double));
     centroid[0] = locsCentroid->x[i_block + firstClusterCount[0] - 1];
     centroid[1] = locsCentroid->y[i_block + firstClusterCount[0] - 1];
+    if (time_flag)
+    {
+        centroid[2] = locsCentroid->z[i_block + firstClusterCount[0] - 1];
+    }
 
     double *distances = (double *)malloc(sizeof(double) * (l1 - l0));
     int *indices = (int *)malloc(sizeof(int) * (l1 - l0));
 
-    for (int i = l0; i < l1; i++) {
+    for (int i = l0; i < l1; i++)
+    {
         double distance;
-        if (distance_metric == 1) {
+        if (distance_metric == 1)
+        {
             distance = distanceEarth(centroid[0], centroid[1], locations_new->x[i], locations_new->y[i]);
-        } else {
+        }
+        else
+        {
             distance = calEucDistance(centroid[0], centroid[1], locations_new->x[i], locations_new->y[i]);
+        }
+        if (time_flag)
+        {
+            distance = sqrt(distance * distance + (centroid[2] - locations_new->z[i]) * (centroid[2] - locations_new->z[i]));
         }
         distances[i - l0] = distance;
         indices[i - l0] = i;
     }
-    if (k > (l1 - l0)) {
+    if (k > (l1 - l0))
+    {
         printf("Not enough points available.\n");
         k = l1 - l0;
     }
 
     // Implementing sorting logic (simple selection sort for illustration)
-    for (int i = 0; i < k; i++) {
+    for (int i = 0; i < k; i++)
+    {
         int min_idx = i;
-        for (int j = i + 1; j < l1 - l0; j++) {
-            if (distances[j] < distances[min_idx]) {
+        for (int j = i + 1; j < l1 - l0; j++)
+        {
+            if (distances[j] < distances[min_idx])
+            {
                 min_idx = j;
             }
         }
@@ -115,19 +132,19 @@ void findNearestPoints(double *h_obs_conditioning, location *locations_con, loca
         indices[min_idx] = temp_idx;
     }
 
-    for (int i = 0; i < k; i++) {
+    for (int i = 0; i < k; i++)
+    {
         locations_con->x[i_block * k + i] = locations_new->x[indices[i]];
         locations_con->y[i_block * k + i] = locations_new->y[indices[i]];
+        if (time_flag)
+        {
+            locations_con->z[i_block * k + i] = locations_new->z[indices[i]];
+        }
         h_obs_conditioning[i_block * k + i] = h_obs_new[indices[i]];
     }
-    // fprintf(stderr, "asdasdas 3\n");
-    // // free(indices);
-    // fprintf(stderr, "asdasdas 2\n");
-    // // free(distances);
-    // fprintf(stderr, "asdasdas 1\n");
-    // // free(centroid);
-    // fprintf(stderr, "asdasdas 4\n");
-    // free will incur the error, not sure why....
+    // Free allocated memory
+    free(distances);
+    free(indices);
 }
 
 #endif

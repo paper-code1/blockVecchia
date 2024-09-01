@@ -24,7 +24,7 @@
 #include <string>
 #include <iomanip>
 
-location *loadXYcsv(const std::string &file_path, int n)
+location *loadXYcsv(const std::string file_path, int n, bool time_flag)
 {
     // Check if the file exists by trying to open it
     std::ifstream testFile(file_path);
@@ -36,7 +36,7 @@ location *loadXYcsv(const std::string &file_path, int n)
     location *loc = (location *)malloc(sizeof(location));
     loc->x = (double *)malloc(n * sizeof(double));
     loc->y = (double *)malloc(n * sizeof(double));
-    loc->z = NULL;
+    loc->z = time_flag ? (double *)malloc(n * sizeof(double)) : NULL;
     std::ifstream file(file_path);
     std::string line;
     int i = 0;
@@ -48,8 +48,11 @@ location *loadXYcsv(const std::string &file_path, int n)
         loc->x[i] = std::stod(token);
         std::getline(ss, token, ',');
         loc->y[i] = std::stod(token);
-        // std::getline(ss, token, ',');
-        // loc->z[i] = std::stod(token);
+        if (time_flag){
+            std::getline(ss, token, ',');
+            loc->z[i] = std::stod(token);
+        }
+        // printf("(%f ,%f ,%f , %d)", loc->x[i], loc->y[i], loc->z[i], i);
         ++i;
     }
     file.close();
@@ -134,11 +137,11 @@ void saveLogFileSum(int iterations, double* theta, double max_llh, double whole_
     std::string ordering_name;
     if (opts.perf == 1)
     {
-        file_path = "./log/locs_" + std::to_string(opts.num_loc) + "_" + "cs_" + std::to_string(opts.vecchia_cs) + "_" + "bc_" + std::to_string(opts.vecchia_bc) + "_" + "seed_" + std::to_string(opts.seed) + "_" + "kernel_" + std::to_string(opts.sigma) + ":" + std::to_string(opts.beta) + ":" + std::to_string(opts.nu);
+        file_path = "./log/locs_" + std::to_string(opts.num_loc) + "_" + "cs_" + std::to_string(opts.vecchia_cs) + "_" + "bc_" + std::to_string(opts.vecchia_bc) + "_" + "seed_" + std::to_string(opts.seed) + "_kernel_" + std::to_string(opts.sigma) + ":" + std::to_string(opts.beta) + ":" + std::to_string(opts.nu);
     }
     else
     {
-        file_path = "./log/locs_" + std::to_string(opts.num_loc) + "_" + "cs_" + std::to_string(opts.vecchia_cs) + "_" + "bc_" + std::to_string(opts.vecchia_bc) + "_" + "seed_" + std::to_string(opts.seed) + "_" + "kernel_" + std::to_string(opts.sigma) + ":" + std::to_string(opts.beta) + ":" + std::to_string(opts.nu);
+        file_path = "./log/locs_" + std::to_string(opts.num_loc) + "_" + "cs_" + std::to_string(opts.vecchia_cs) + "_" + "bc_" + std::to_string(opts.vecchia_bc) + "_" + "seed_" + std::to_string(opts.seed) + "_kernel_" + std::to_string(opts.sigma) + ":" + std::to_string(opts.beta) + ":" + std::to_string(opts.nu);
     }
     if (opts.mortonordering)
         file_path = file_path + "_morton";

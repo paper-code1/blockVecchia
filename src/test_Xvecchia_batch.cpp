@@ -101,16 +101,15 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     long long nclusters;
     std::vector<Point> points;
     std::vector<Point> centroids;
-    if (opts.num_loc < 2 * opts.vecchia_bc)
+    nclusters = (opts.num_loc < 2 * opts.vecchia_bc) ? opts.num_loc : opts.vecchia_bc; // classic vecchia or cluster vecchia
+
+    // check for space-time kernel
+    if (opts.time_flag && opts.t_slots != 0 && opts.num_loc % opts.t_slots != 0)
     {
-        // classic vecchia
-        nclusters = opts.num_loc;
+        fprintf(stderr, "Your number of locations cannot be divided by t_slot!");
+        exit(-1);
     }
-    else
-    {
-        // cluster vecchia
-        nclusters = opts.vecchia_bc;
-    }
+
     long long batchCount;
     int *batchIndex, *batchNum, *batchNumAccum, *batchNumSquareAccum, *clusterNum;
     int cs = opts.vecchia_cs;
@@ -126,7 +125,7 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     // Allocate memory
     locsCentroid->x = (double *)malloc(nclusters * sizeof(double));
     locsCentroid->y = (double *)malloc(nclusters * sizeof(double));
-    locsCentroid->z = NULL;
+    locsCentroid->z = opts.time_flag ? (double *)malloc(nclusters * sizeof(double)) : NULL;
 
     // new locations/obs after clustering
     // easier for later MAGMA BLAS operations
@@ -134,9 +133,11 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     location *locations_new = (location *)malloc(sizeof(location));
     locations_new->x = (double *)malloc(opts.num_loc * sizeof(double));
     locations_new->y = (double *)malloc(opts.num_loc * sizeof(double));
-    locations_new->z = NULL;
+    locations_new->z = opts.time_flag ? (double *)malloc(opts.num_loc * sizeof(double)) : NULL;
 
     TESTING_CHECK(magma_dmalloc_cpu(&h_obs, opts.num_loc));
+
+    omp_set_num_threads(opts.omp_numthreads);
 
     //-------------------------------------------------------------//
     //------------------k-means for partition-----------------------//
@@ -145,7 +146,7 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     // performance test
     if (opts.perf == 1)
     {
-        locations = GenerateXYLoc(opts.num_loc, opts.seed); // 0 is the random seed
+        locations = opts.time_flag ? GenerateXYLoc_ST(opts.num_loc / opts.t_slots, opts.t_slots, opts.seed) : GenerateXYLoc(opts.num_loc, opts.seed); // 0 is the random seed
         // for(int i = 0; i < opts.num_loc; i++) h_obs[i] = (T) rand()/(T)RAND_MAX;
         for (int i = 0; i < opts.num_loc; ++i)
             h_obs[i] = 0.0;
@@ -166,13 +167,24 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
             localtheta_initial[2] = opts.nu;
             localtheta_initial[3] = opts.nugget;
         }
+        else if (opts.kernel == 4)
+        {
+            localtheta_initial[0] = opts.sigma;
+            localtheta_initial[1] = opts.beta;
+            localtheta_initial[2] = opts.nu;
+            localtheta_initial[3] = opts.beta_time;
+            localtheta_initial[4] = opts.nu_time;
+            localtheta_initial[5] = opts.sep;
+            localtheta_initial[6] = opts.aux;
+        }
         data.distance_metric = 0;
     }
     else
     {
 
-        if (opts.xy_path.empty()){
-            fprintf(stderr, "You are using the default the path, please see in file ./src/test_Xvecchia_batch.cpp line 169!\n");
+        if (opts.xy_path.empty())
+        {
+            fprintf(stderr, "You are using the default the path, please see in file ./src/test_Xvecchia_batch.cpp!\n");
             /*used for the simulated data and real applications*/
             /*simulations*/
             // fprintf(stderr, "You are testing the simulations!\n");
@@ -184,15 +196,19 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
             // z_path = "./soil_moist/observation_train_0.125";
             // xy_path = "./wind/meta_train_250000";
             // z_path = "./wind/observation_train_250000";
-        }else{
+        }
+        else
+        {
             // Convert char* to std::string
             xy_path = opts.xy_path;
             z_path = opts.obs_path;
         }
-        if (opts.earth){
+        if (opts.earth)
+        {
             data.distance_metric = 1; // 1 for earth distance
         }
-        locations = loadXYcsv(xy_path, opts.num_loc);
+        locations = loadXYcsv(xy_path, opts.num_loc, opts.time_flag);
+        // for (int i=0; i < opts.num_loc; ++i) printf("(%f ,%f ,%f , %d)", locations->x[i], locations->y[i], locations->z[i], i);
         loadObscsv<T>(z_path, opts.num_loc, h_obs);
         // for(int i = 0; i < 10000; i++) printf("%ith %lf \n",i, h_obs[i]);
         if (opts.kernel == 1 || opts.kernel == 2)
@@ -208,6 +224,16 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
             localtheta_initial[2] = opts.nu_init;
             localtheta_initial[3] = opts.nugget_init;
         }
+        else if (opts.kernel == 4)
+        {
+            localtheta_initial[0] = opts.sigma_init;
+            localtheta_initial[1] = opts.beta_init;
+            localtheta_initial[2] = opts.nu_init;
+            localtheta_initial[3] = opts.beta_time_init;
+            localtheta_initial[4] = opts.nu_time_init;
+            localtheta_initial[5] = opts.sep_init;
+            localtheta_initial[6] = 0.; // auxiliary parameter is not optimized here
+        }
     }
 
     // BV or CV
@@ -215,7 +241,7 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     {
         // classic vecchia
         fprintf(stderr, "You are using the classic Vecchia!\n");
-        points = convertToPoints(locations, opts.num_loc);
+        points = convertToPoints(locations, opts.num_loc, opts.time_flag);
         clusterNum = (int *)calloc(nclusters, sizeof(int));
         for (int i = 0; i < opts.num_loc; i++)
         {
@@ -229,12 +255,13 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
         // cluster vecchia
         fprintf(stderr, "You are using the cluster Vecchia!\n");
         // transform the locations into points
-        points = convertToPoints(locations, opts.num_loc);
+        points = convertToPoints(locations, opts.num_loc, opts.time_flag);
         // init the centroids
         centroids = random_initializer(points, nclusters, opts.seed);
+
         // kmeans, 1000 here is default for kmeans iterations
-        kmean_par(points, centroids, 100, nclusters, opts.omp_numthreads);
-        // very slow, not recommend to use
+        kmean_par(points, centroids, 50, nclusters, opts.omp_numthreads);
+        // very slow, not recommend to use, and it's only supported for 2D spatial
         // kmean_par_earth(points, centroids, 500, nclusters, opts.omp_numthreads);
         clusterNum = countPointsInClusters(points);
     }
@@ -247,44 +274,49 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     {
         locsCentroid->x[i] = centroids[i].coordinates[0];
         locsCentroid->y[i] = centroids[i].coordinates[1];
+        if (opts.time_flag)
+        {
+            locsCentroid->z[i] = centroids[i].coordinates[2];
+        }
         permIndex[i] = centroids[i].cluster;
     }
 
     // Ordering for locations and observations
+    opts.time_flag ? fprintf(stderr, "You were using the 3D ordering. \n") : fprintf(stderr, "You were using the 2D ordering. \n");
     if (opts.randomordering == 1)
     {
-        random_reordering(nclusters, locsCentroid);
+        opts.time_flag ? random_reordering_3d(nclusters, locsCentroid) : random_reordering(nclusters, locsCentroid);
         fprintf(stderr, "You were using the Random ordering. \n");
     }
     else if (opts.mortonordering == 1)
     {
-        zsort_reordering(nclusters, locsCentroid);
+        opts.time_flag ? zsort_locations_morton_3d(nclusters, locsCentroid) : zsort_reordering(nclusters, locsCentroid);
         fprintf(stderr, "You were using the Morton ordering. \n");
     }
     else if (opts.kdtreeordering == 1)
     {
-        zsort_locations_kdtree(nclusters, locsCentroid);
+        opts.time_flag ? zsort_locations_kdtree_3d(nclusters, locsCentroid) : zsort_locations_kdtree(nclusters, locsCentroid);
         fprintf(stderr, "You were using the KDtree ordering. \n");
     }
     else if (opts.hilbertordering == 1)
     {
-        zsort_locations_hilbert(nclusters, locsCentroid);
+        opts.time_flag ? zsort_locations_hilbert_3d(nclusters, locsCentroid) : zsort_locations_hilbert(nclusters, locsCentroid);
         fprintf(stderr, "You were using the Hilbert ordering. \n");
     }
-    // else if (opts.mmdordering == 1)
-    // {
-    //     zsort_locations_mmd(nclusters, locations);
-    //     fprintf(stderr, "You were using the MMD ordering. \n");
-    // }
+    else if (opts.mmdordering == 1)
+    {
+        opts.time_flag ? zsort_locations_mmd_3d(nclusters, locsCentroid) : zsort_locations_mmd(nclusters, locsCentroid);
+        fprintf(stderr, "You were using the MMD ordering. \n");
+    }
     else
     {
         fprintf(stderr, "Other ordering is being developed. \n");
         exit(0);
     }
-
+    
     // find the reordered index
     // array of permIndex stores the reordered index, such as permIndex = 12, 3, 4,...
-    reorderIndex(locsCentroid, centroids, permIndex, nclusters);
+    reorderIndex(locsCentroid, centroids, permIndex, nclusters, opts.time_flag);
 
     // the first batch will calcuate full llh as a whole
     // the locations and clusters are reconstructed
@@ -304,10 +336,11 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     locations_con = (location *)malloc(sizeof(location));
     locations_con->x = (double *)malloc(batchCount * cs * sizeof(double));
     locations_con->y = (double *)malloc(batchCount * cs * sizeof(double));
-    locations_con->z = NULL;
+    locations_con->z = opts.time_flag ? (double *)malloc(batchCount * cs * sizeof(double)) : NULL;
     h_obs_conditioning = (T *)malloc(batchCount * cs * sizeof(T));
-    for (int i = 0; i < batchCount; ++i)
+    for (int i = 0; i < batchCount; ++i){
         batchNum[i] = clusterNum[permIndex[i + firstClusterCount[0] - 1]];
+    }
     for (int i = 1; i < (batchCount + 1); ++i)
     {
         batchNumAccum[i] += batchNumAccum[i - 1] + batchNum[i - 1];
@@ -315,7 +348,7 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     }
     assert(batchNumAccum[batchCount] == opts.num_loc);
     // reorder the cluster based on the batchIndex
-    cluster_to_batch(opts.num_loc, batchCount, batchNum, batchNumAccum, batchIndex, locations, h_obs, locations_new, h_obs_new, points, locsCentroid);
+    cluster_to_batch(opts.num_loc, batchCount, batchNum, batchNumAccum, batchIndex, locations, h_obs, locations_new, h_obs_new, points, locsCentroid, opts.time_flag);
     // clusterid will be not used anymore, it has been change in place
     fprintf(stderr, "--------------Reordering Done-----------------\n");
 
@@ -326,23 +359,27 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     memcpy(h_obs_conditioning, h_obs_new, sizeof(T) * cs);
     memcpy(locations_con->x, locations_new->x, sizeof(T) * cs);
     memcpy(locations_con->y, locations_new->y, sizeof(T) * cs);
+    if (opts.time_flag)
+    {
+        memcpy(locations_con->z, locations_new->z, sizeof(T) * cs);
+    }
 
     if (opts.knn)
     {
 #pragma omp parallel for
-        for (int i = 1; i < batchCount; ++i)
-        {
-            // how many previous points you would like to include in your nearest neighbor searching
-            // int starting_loc = std::max(i - 100000, 0);
-            int starting_loc = 0;
-            findNearestPoints(
-                h_obs_conditioning, locations_con,
-                locsCentroid, firstClusterCount,
-                h_obs_new, locations_new,
-                starting_loc, batchNumAccum[i],
-                cs, i, data.distance_metric);
-            // printLocations(cs * (i+1), locations_con);
-        }
+            for (int i = 1; i < batchCount; ++i)
+            {
+                // how many previous points you would like to include in your nearest neighbor searching
+                // int starting_loc = std::max(i - 100000, 0);
+                int starting_loc = 0;
+                findNearestPoints(
+                    h_obs_conditioning, locations_con,
+                    locsCentroid, firstClusterCount,
+                    h_obs_new, locations_new,
+                    starting_loc, batchNumAccum[i],
+                    cs, i, data.distance_metric, opts.time_flag);
+                // printLocations(cs * (i+1), locations_con);
+            }
     }
     else
     {
@@ -351,6 +388,10 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
         {
             memcpy(locations_con->x + i * cs, locations_new->x + batchNumAccum[i] - cs, sizeof(T) * cs);
             memcpy(locations_con->y + i * cs, locations_new->y + batchNumAccum[i] - cs, sizeof(T) * cs);
+            if (opts.time_flag)
+            {
+                memcpy(locations_con->z + i * cs, locations_new->z + batchNumAccum[i] - cs, sizeof(T) * cs);
+            }
             memcpy(h_obs_conditioning + i * cs, h_obs_new + batchNumAccum[i] - cs, sizeof(T) * cs);
         }
     }
@@ -358,16 +399,23 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     {
         std::string clustersFile;
         std::string neighborsFile;
-        if (opts.randomordering == 1){
+        if (opts.randomordering == 1)
+        {
             clustersFile = "./log/points_Random.csv";
             neighborsFile = "./log/neighbors_Random.csv";
-        }else if(opts.kdtreeordering == 1){
+        }
+        else if (opts.kdtreeordering == 1)
+        {
             clustersFile = "./log/points_KDtree.csv";
             neighborsFile = "./log/neighbors_KDtree.csv";
-        }else if(opts.hilbertordering == 1){
+        }
+        else if (opts.hilbertordering == 1)
+        {
             clustersFile = "./log/points_Hilbert.csv";
             neighborsFile = "./log/neighbors_Hilbert.csv";
-        }else if(opts.mortonordering == 1){
+        }
+        else if (opts.mortonordering == 1)
+        {
             clustersFile = "./log/points_Morton.csv";
             neighborsFile = "./log/neighbors_Morton.csv";
         }
@@ -375,7 +423,8 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
         outFilepoints << "x,y,cluster\n"; // Header
         for (int i = 0; i < batchCount; i++)
         {
-            for (int j = 0; j < batchNum[i]; j++){
+            for (int j = 0; j < batchNum[i]; j++)
+            {
                 outFilepoints << locations_new->x[batchNumAccum[i] + j] << "," << locations_new->y[batchNumAccum[i] + j] << "," << i << "\n";
             }
         }
@@ -447,8 +496,6 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
         h_obs_array_copy[i] = h_obs_array_copy[i - 1] + h_ldda[i - 1];
     }
     h_obs_tmp = h_obs_new;
-    // for (int i=0; i< 100; i++) fprintf(stderr, "%lf ", h_obs_new[i]);
-    // for (int i=0; i< batchCount; i++) fprintf(stderr, "%d ", batchNum[i]);
     d_obs_tmp = d_obs;
     for (int i = 0; i < batchCount; i++)
     {
@@ -586,11 +633,16 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     data.sigma = opts.sigma;
     data.beta = opts.beta;
     data.nu = opts.nu;
+    data.beta_time = opts.beta_time;
+    data.nu_time = opts.nu_time;
+    data.sep = opts.sep;
+    data.aux = opts.aux;
     data.iterations = 0; // starting iterations
     data.omp_threads = opts.omp_numthreads;
     data.kernel = opts.kernel;
     data.num_params = opts.num_params;
     data.seed = opts.seed;
+    data.time_flag = opts.time_flag;
     // data.vecchia_time_total = 0; // used for accumulatet the time on vecchia
     data.perf = opts.perf;
 
@@ -644,6 +696,14 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
         lb[i] = opts.lower_bound;
         ub[i] = opts.upper_bound;
     }
+    if (opts.kernel == 4)
+    {
+        // space-time kernel should bounded
+        ub[4] = 1.0; // smoothness in time
+        ub[5] = 1.0; // seperability param
+        lb[6] = 0.;  // aux parameter
+        ub[6] = 0.;
+    }
     nlopt_set_lower_bounds(opt, lb);
     nlopt_set_upper_bounds(opt, ub);
 
@@ -661,9 +721,21 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     }
     else
     {
-        printf("Found minimum at f(%g, %g, %g) = %0.10g\n", localtheta_initial[0], localtheta_initial[1], localtheta_initial[2], maxf);
+        if (opts.kernel == 1 || opts.kernel == 2)
+        {
+            printf("Found maximum at f(%g, %g, %g) = %0.10g\n", localtheta_initial[0], localtheta_initial[1], localtheta_initial[2], maxf);
+        }
+        else if (opts.kernel == 3)
+        {
+            printf("Found maximum at f(%g, %g, %g, %g) = %0.10g\n", localtheta_initial[0], localtheta_initial[1], localtheta_initial[2], localtheta_initial[3], maxf);
+        }
+        else if (opts.kernel == 4)
+        {
+            printf("Found maximum at f(%g, %g, %g, %g, %g, %g) = %0.10g\n", localtheta_initial[0], localtheta_initial[1], localtheta_initial[2], localtheta_initial[3], localtheta_initial[4], localtheta_initial[5], maxf);
+        }
     }
-    assert(nlopt_get_numevals(opt) == data.iterations);
+    // fprintf(stderr, "%d %d", nlopt_get_numevals(opt), data.iterations);
+    // assert(nlopt_get_numevals(opt) == data.iterations);
     clock_gettime(CLOCK_MONOTONIC, &end_whole);
     whole_time = end_whole.tv_sec - start_whole.tv_sec + (end_whole.tv_nsec - start_whole.tv_nsec) / 1e9;
     saveLogFileSum<T>(data.iterations, localtheta_initial, maxf, whole_time, opts);
@@ -673,6 +745,8 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
 
     free(locations_con->x);
     free(locations_con->y);
+    if (opts.time_flag)
+        free(locations_con->z);
     magma_free(d_Cov_conditioning);
     magma_free(d_Cov_cross);
     magma_free(d_obs_conditioning);
@@ -697,6 +771,11 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     free(locations->y);
     free(locations_new->x);
     free(locations_new->y);
+    if (opts.time_flag)
+    {
+        free(locations->z);
+        free(locations_new->z);
+    }
     free(clusterNum);
     // free(centroid);
     free(permIndex);

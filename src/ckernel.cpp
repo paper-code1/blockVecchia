@@ -75,6 +75,48 @@ location *GenerateXYLoc(int n, int seed)
     return locations;
 }
 
+location *GenerateXYLoc_ST(int n, int t_slots, int seed)
+//! Generate XY location for exact computation (MOORSE)
+{
+    //initalization
+    int i = 0, index = 0, j = 0;
+
+    srand(seed);
+    location *locations = (location *) malloc(sizeof(location));
+    //Allocate memory
+    locations->x = (double* ) malloc(n * t_slots * sizeof(double));
+    locations->y = (double* ) malloc(n * t_slots * sizeof(double));
+    locations->z = (double* ) malloc(n * t_slots * sizeof(double));
+
+    int sqrtn = ceil(sqrt(n));
+
+    int *grid = (int *) calloc((int) sqrtn, sizeof(int));
+
+    for (i = 0; i < sqrtn; i++) {
+        grid[i] = i + 1;
+    }
+
+    for (i = 0; i < sqrtn && index < n; i++)
+        for (j = 0; j < sqrtn && index < n; j++) {
+            locations->x[index] = (grid[i] - 0.5 + uniform_distribution(-0.4, 0.4)) / sqrtn;
+            locations->y[index] = (grid[j] - 0.5 + uniform_distribution(-0.4, 0.4)) / sqrtn;
+            // locations->z[index] = 1.0; // EXAGEOSTAT
+			locations->z[index] = 1.0 / t_slots; // VECCHIA scaled
+            index++;
+        }
+
+
+    for (j = 1; j < t_slots; j++) {
+        for (i = 0; i < n; i++) {
+            locations->x[i + j * n] = locations->x[i];
+            locations->y[i + j * n] = locations->y[i];
+			// locations->z[i + j * n] = (double) (j + 1);// EXAGEOSTAT
+            locations->z[i + j * n] = (double) (j + 1) / t_slots; // VECCHIA scaled
+        }
+    }
+    return locations;
+}
+
 /**
  * This function converts decimal degrees to radians
  * @param deg decimal degree
@@ -128,7 +170,7 @@ static double calculateDistance(location* l1, location* l2, int l1_index,
 	double y1 = l1->y[l1_index];
 	double x2 = l2->x[l2_index];
 	double y2 = l2->y[l2_index];
-	if (l1->z == NULL || l2->z == NULL || z_flag == 1) {
+	if (l1->z == NULL || l2->z == NULL || z_flag == 0) {
 		if (distance_metric == 1)
 			return distanceEarth(x1, y1, x2, y2);
 		return sqrt(pow((x2 - x1), 2) + pow((y2 - y1), 2));
@@ -1015,7 +1057,7 @@ void core_dcmg_matern_ddnu_nu(double* A, int m, int n,
 void core_dcmg(double* A, int m, int n,
 		// int m0, int n0, 
 		location* l1,
-		location* l2, const double* localtheta, int distance_metric) {
+		location* l2, const double* localtheta, int distance_metric, int z_flag) {
 
 	int i, j;
 	// int i0 = m0;
@@ -1033,8 +1075,8 @@ void core_dcmg(double* A, int m, int n,
 	for (i = 0; i < m; i++) {
 		j0 = 0;
 		for (j = 0; j < n; j++) {
-			expr = calculateDistance(l1, l2, i0, j0, distance_metric, 0) / localtheta[1];
-			// expr /= 9348.317; /*comment it for real dataset, 2523.64 wind, 9348.317 soil*/ 
+			expr = calculateDistance(l1, l2, i0, j0, distance_metric, z_flag) / localtheta[1];
+			expr /= 2523.64; /*comment it for real dataset, 2523.64 wind, 9348.317 soil*/ 
 			// printf("%lf \n", expr);
 			if (expr == 0)
 				A[i + j * m] = sigma_square /*+ 1e-4*/;
@@ -1366,6 +1408,7 @@ void core_sdcmg(double* A, int m, int n,
  *          Reference: Equation (16) of Tilmann Gneiting (2002) Nonseparable, 
  * Stationary Covariance Functions for Space–Time Data, 
  * Journal of the American Statistical Association, 97:458, 590-600, DOI: 10.1198/016214502760047113
+ * 			The range parameters are difference from the (16) ()*a -> ()/a
  *
  * @param[in] distance_metric
  *          Distance metric "euclidean Distance (ED) ->0" or "Great Circle Distance (GCD) ->1"
@@ -1374,13 +1417,13 @@ void core_sdcmg(double* A, int m, int n,
  *
  *
  ******************************************************************************/
-void core_dcmg_spacetime_matern(double* A, int m, int n,
-		int m0, int n0, location* l1,
-		location* l2, double* localtheta, int distance_metric) {
+void core_dcmg_spacetime_matern(double* A, int m, int n, 
+location* l1, 
+location* l2, const double* localtheta, int distance_metric) {
 
 	int i, j;
-	int i0 = m0;
-	int j0 = n0;
+	int i0 = 0;
+	int j0 = 0;
 	double x0, y0, z0, z1;
 	double expr = 0.0, expr1 = 0.0, expr2 = 0.0, expr3 = 0.0, expr4 = 0.0;
 	double con = 0.0;
@@ -1391,7 +1434,7 @@ void core_dcmg_spacetime_matern(double* A, int m, int n,
 	con = sigma_square * con;
 
 	for (i = 0; i < m; i++) {
-		j0 = n0;
+		j0 = 0;
 		z0 = l1->z[i0];
 		for (j = 0; j < n; j++) {
 			z1 = l2->z[j0];
@@ -1399,8 +1442,7 @@ void core_dcmg_spacetime_matern(double* A, int m, int n,
 			expr = calculateDistance(l1, l2, i0, j0, distance_metric, 1) / localtheta[1];
 			expr2 = pow(pow(sqrt(pow(z0 - z1, 2)), 2 * localtheta[4]) / localtheta[3] + 1.0, localtheta[5] / 2.0);
 			expr3 = expr / expr2;
-			expr4 = pow(pow(sqrt(pow(z0 - z1, 2)), 2 * localtheta[4]) / localtheta[3] + 1.0,
-					localtheta[5] + localtheta[6]);
+			expr4 = pow(pow(sqrt(pow(z0 - z1, 2)), 2 * localtheta[4]) / localtheta[3] + 1.0, localtheta[5] + localtheta[6]);
 
 			if (expr == 0)
 				A[i + j * m] = sigma_square / expr4 /*+ 1e-4*/;
@@ -1411,6 +1453,7 @@ void core_dcmg_spacetime_matern(double* A, int m, int n,
 		}
 		i0++;
 	}
+	gsl_set_error_handler_off();
 }
 
 /*****************************************************************************

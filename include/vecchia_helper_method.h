@@ -60,7 +60,7 @@ extern "C"
     }
   }
 
-  void cluster_to_batch(int num_loc, int batchCount, int *batchNum, int *batchNumAccum, int *batchIndex, location *locations, double *h_obs, location *locations_new, double *h_obs_new, std::vector<Point> &points, location *locsCentroid)
+  void cluster_to_batch(int num_loc, int batchCount, int *batchNum, int *batchNumAccum, int *batchIndex, location *locations, double *h_obs, location *locations_new, double *h_obs_new, std::vector<Point> &points, location *locsCentroid, bool time_flag)
   {
     // reconstruct the new locations and observations
     for (int i = 0; i < batchCount; ++i)
@@ -80,6 +80,10 @@ extern "C"
         {
           locations_new->x[batchNumAccum[i] + j] = locations->x[_id];
           locations_new->y[batchNumAccum[i] + j] = locations->y[_id];
+          if (time_flag)
+          {
+            locations_new->z[batchNumAccum[i] + j] = locations->z[_id];
+          }
           h_obs_new[batchNumAccum[i] + j] = h_obs[_id];
           _id++;
         }
@@ -114,29 +118,16 @@ extern "C"
       {
         if (array[i] == array[j])
         {
-          return true;
+          fprintf(stderr, "Your index has duplicate: index[%d] and index[%d] share %d \n", i, j, array[j]);
+          return false;
         }
       }
     }
     return false;
   }
-  void reorderIndex(location *locsCentroid, std::vector<Point> &points, int *clusterReordering, int nclusters)
+  void reorderIndex(location *locsCentroid, std::vector<Point> &points, int *clusterReordering, int nclusters, bool time_flag)
   {
 // in/out: clusterReordering, 0, 1, 2, 3, ...., n -> 10, 2, 3, ...,
-// for (int i = 0; i < nclusters; ++i)
-// {
-//   double _dist_min = DBL_MAX;
-//   double _dist_temp = 0;
-//   for (int j = 0; j < nclusters; ++j)
-//   {
-//     _dist_temp = (locsCentroid->x[i] - points[j].coordinates[0]) * (locsCentroid->x[i] - points[j].coordinates[0]) + (locsCentroid->y[i] - points[j].coordinates[1]) * (locsCentroid->y[i] - points[j].coordinates[1]);
-//     if (_dist_temp < _dist_min)
-//     {
-//       clusterReordering[i] = j;
-//       _dist_min = _dist_temp;
-//     }
-//   }
-// }
 #pragma omp parallel for
     for (int i = 0; i < nclusters; ++i)
     {
@@ -147,6 +138,10 @@ extern "C"
         double dx = locsCentroid->x[i] - points[j].coordinates[0];
         double dy = locsCentroid->y[i] - points[j].coordinates[1];
         double _dist_temp = dx * dx + dy * dy; // Use squared distance
+        if (time_flag){
+          double dz = locsCentroid->z[i] - points[j].coordinates[2];
+          _dist_temp += dz*dz;
+        }
         if (_dist_temp < _dist_min)
         {
           _dist_min = _dist_temp;
@@ -156,26 +151,29 @@ extern "C"
       clusterReordering[i] = min_index;
     }
 
-    // // check if there is same orders
-    // if (hasDuplicates(clusterReordering, nclusters))
-    // {
-    //   fprintf(stderr, "Your reordering has unknown issues, please check it");
-    //   exit(-1);
-    // }
+    // check if there is same orders
+    if (hasDuplicates(clusterReordering, nclusters))
+    {
+      fprintf(stderr, "Your reordering has unknown issues, please check it\n");
+      exit(-1);
+    }
   }
 
-  std::vector<Point> convertToPoints(location *loc, int n)
+  std::vector<Point> convertToPoints(location *&loc, int n, bool time_flag)
   {
     std::vector<Point> points;
     points.reserve(n); // Optimize memory allocation
-
     for (int i = 0; i < n; ++i)
     {
       Point p;                      // Use the default constructor
       p.coordinates[0] = loc->x[i]; // Set x coordinate
       p.coordinates[1] = loc->y[i]; // Set y coordinate
-      p.cluster = -1;               // Assuming you want to initialize the cluster to -1 or some default value
-      points.push_back(p);          // Add the point to the vector
+      if (time_flag)
+      {
+        p.coordinates[2] = loc->z[i]; // Set z coordinate
+      }
+      p.cluster = -1;      // Assuming you want to initialize the cluster to -1 or some default value
+      points.push_back(p); // Add the point to the vector
     }
 
     return points;
@@ -214,6 +212,7 @@ extern "C"
     for (const auto &point : points)
     {
       clusterCounts[point.cluster]++;
+      // point.print();
     }
 
     // Find the cluster with the maximum number of points

@@ -77,9 +77,15 @@ void kmean_par(std::vector<Point> &points, std::vector<Point> &centroids, int ep
 
     int points_per_thread = ceil(points.size() / threads);
 
+    fprintf(stderr, "---------------------------------\n");
+
+
     for (int i = 0; i < epochs; i++)
     {
-
+        if (i % 10 == 0)
+        {
+            fprintf(stderr, "K-means: %d rounds / %d finished. \n", i, epochs);
+        }
 #pragma omp parallel num_threads(threads)
         {
             std::vector<int> tmp_cluster_cardinality(k, 0);
@@ -115,6 +121,16 @@ void kmean_par(std::vector<Point> &points, std::vector<Point> &centroids, int ep
 
         for (int i = 0; i < k; i++)
         {
+            if(cluster_cardinality[i] == 0){
+                // option 1: we randomly choose other points a the initial cluster
+                std::mt19937 gen(42);
+                std::uniform_int_distribution<> distr(0, points.size() - 1);
+                int random_number = distr(gen);
+
+                new_centroids[i] += points[random_number];
+                points[random_number].cluster = i;
+                cluster_cardinality[i] += 1;
+            }
             new_centroids[i] /= cluster_cardinality[i];
             difference += euclidean_dist(new_centroids[i], centroids[i]);
         }
@@ -123,10 +139,6 @@ void kmean_par(std::vector<Point> &points, std::vector<Point> &centroids, int ep
 
         new_centroids = std::vector<Point>(k, Point());
         cluster_cardinality = std::vector<int>(k, 0);
-        if (i % 100 == 0)
-        {
-            fprintf(stderr, "%d rounds / %d finished. \n", i, epochs);
-        }
     }
 
     // return centroids;
