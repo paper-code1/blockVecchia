@@ -1076,7 +1076,7 @@ void core_dcmg(double* A, int m, int n,
 		j0 = 0;
 		for (j = 0; j < n; j++) {
 			expr = calculateDistance(l1, l2, i0, j0, distance_metric, z_flag) / localtheta[1];
-			expr /= 2523.64; /*comment it for real dataset, 2523.64 wind, 9348.317 soil*/ 
+			// expr /= 2523.64; /*comment it for real dataset, 2523.64 wind, 9348.317 soil*/ 
 			// printf("%lf \n", expr);
 			if (expr == 0)
 				A[i + j * m] = sigma_square /*+ 1e-4*/;
