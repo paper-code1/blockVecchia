@@ -419,6 +419,11 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
             clustersFile = "./log/points_Morton.csv";
             neighborsFile = "./log/neighbors_Morton.csv";
         }
+        else if (opts.mmdordering == 1)
+        {
+            clustersFile = "./log/points_MMD.csv";
+            neighborsFile = "./log/neighbors_MMD.csv";
+        }
         std::ofstream outFilepoints(clustersFile);
         outFilepoints << "x,y,cluster\n"; // Header
         for (int i = 0; i < batchCount; i++)
