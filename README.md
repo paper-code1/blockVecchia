@@ -29,8 +29,7 @@ Ensure you have the following libraries installed and their paths included in yo
 
 1. Clone the repository:
    ```
-   git clone https://github.com/your-username/block-vecchia-algorithm.git
-   cd block-vecchia-algorithm
+   cd blockVecchia
    ```
 
 2. Build the project using the provided Makefile:
@@ -71,6 +70,12 @@ Optional parameters:
 --kernel_init 0.1:0.1:0.1 --tol 4 --omp_threads 40
 ```
 
+### 4. How to reproduce the results in the paper
+
+Download the log data from [here](https://drive.google.com/drive/folders/1xV_5OrAZRdeOHerXth9nlYMDYZBqQQt7?usp=drive_link) (around 2.6 GB, including all the figures and source data and log files used in the paper).
+
+You can reproduce the results in the paper by reading the `./blockVecchia-TCH-24-075/README.md`, which clarifies the usage of the code and the data.
+
 ### Output
 
 Results are stored in the `./log` file after execution.
@@ -80,6 +85,3 @@ Results are stored in the `./log` file after execution.
 ## License
 
 This project is licensed under the terms of the Apache license. See the LICENSE file for details.
-
-## Contact
-Email: qilong.pan@kaust.edu.sa
