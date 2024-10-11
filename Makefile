@@ -65,6 +65,8 @@ OBJ_DIR=./obj
 BIN_DIR=./bin
 VECCHIA_BATCH=./src
 include $(VECCHIA_BATCH)/Makefile
+# if not exist, create it
+$(shell mkdir -p $(BIN_DIR) $(OBJ_DIR))
 
 all: $(EXE_VECCHIA)
 
