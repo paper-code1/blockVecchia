@@ -63,6 +63,8 @@ LIB+= -lstdc++
 INCLUDE_DIR=./include
 OBJ_DIR=./obj
 BIN_DIR=./bin
+# if not exist, create it
+$(shell mkdir -p $(BIN_DIR) $(OBJ_DIR))
 VECCHIA_BATCH=./src
 include $(VECCHIA_BATCH)/Makefile
 
