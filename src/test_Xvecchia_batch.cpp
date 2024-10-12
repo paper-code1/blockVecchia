@@ -650,6 +650,7 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     data.time_flag = opts.time_flag;
     // data.vecchia_time_total = 0; // used for accumulatet the time on vecchia
     data.perf = opts.perf;
+    data.dist_scale = opts.dist_scale;
 
     if (opts.vecchia)
     {

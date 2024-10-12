@@ -63,14 +63,15 @@ LIB+= -lstdc++
 INCLUDE_DIR=./include
 OBJ_DIR=./obj
 BIN_DIR=./bin
-# if not exist, create it
 $(shell mkdir -p $(BIN_DIR) $(OBJ_DIR))
 VECCHIA_BATCH=./src
 include $(VECCHIA_BATCH)/Makefile
 
 all: $(EXE_VECCHIA)
 
-$(EXE_VECCHIA): $(BIN_DIR)/%: $(OBJ_DIR)/%.o $(OBJ_DIR)/kmeans.o $(OBJ_DIR)/ckernel.o
+$(EXE_VECCHIA): $(BIN_DIR)/test_dvecchia_batch
+
+$(BIN_DIR)/test_dvecchia_batch: $(OBJ_DIR)/test_dvecchia_batch.o $(OBJ_DIR)/kmeans.o $(OBJ_DIR)/ckernel.o
 	$(CXX) $(COPTS) $(OBJ_DIR)/kmeans.o $(OBJ_DIR)/ckernel.o $< -o $@ $(LIB_PATH) $(LIB)
 
 $(OBJ_DIR)/kmeans.o: $(VECCHIA_BATCH)/kmeans.cpp

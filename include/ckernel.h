@@ -1015,7 +1015,7 @@ extern "C"
                    //    int m0, int n0,
                    location *l1, location *l2,
                    const double *localtheta, int distance_metric,
-                   int z_flag);
+                   int z_flag, double dist_scale);
 
     void core_sdcmg(double *A, int m, int n,
                     int m0, int n0,

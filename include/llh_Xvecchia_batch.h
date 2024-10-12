@@ -139,7 +139,8 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
                       batchNum[i],
                       loc_batch, // starting of the locations_new
                       loc_batch,
-                      localtheta, data->distance_metric, z_flag);
+                      localtheta, data->distance_metric, 
+                      z_flag, data->dist_scale);
         }
         // printVectorCPU(data->Cm, data->h_obs_new, data->ldc, i);
         // printMatrixCPU(batchNum[i], batchNum[i], h_Cov + batchNumSquareAccum[i], h_lda[i], i);
@@ -182,13 +183,15 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
                 core_dcmg(h_Cov_conditioning + i * cs * cs,
                           cs, cs,
                           loc_batch_con,
-                          loc_batch_con, localtheta, data->distance_metric, z_flag);
+                          loc_batch_con, localtheta, data->distance_metric,
+                          z_flag, data->dist_scale);
                 // *h_Cov_cross: \sigma_{21}
                 // printLocations(data->batchNum[i], loc_batch);
                 core_dcmg(h_Cov_cross + cs * batchNumAccum[i],
                           cs, batchNum[i],
                           loc_batch_con,
-                          loc_batch, localtheta, data->distance_metric, z_flag);
+                          loc_batch, localtheta, data->distance_metric,
+                          z_flag, data->dist_scale);
             }
             // printf("The conditioning covariance matrix.\n");
             // printMatrixCPU(cs, batchNum[i], h_Cov_cross + cs * batchNum[i], h_ldacon[0], i);

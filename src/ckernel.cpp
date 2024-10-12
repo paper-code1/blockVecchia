@@ -1057,7 +1057,7 @@ void core_dcmg_matern_ddnu_nu(double* A, int m, int n,
 void core_dcmg(double* A, int m, int n,
 		// int m0, int n0, 
 		location* l1,
-		location* l2, const double* localtheta, int distance_metric, int z_flag) {
+		location* l2, const double* localtheta, int distance_metric, int z_flag, double dist_scale) {
 
 	int i, j;
 	// int i0 = m0;
@@ -1077,6 +1077,7 @@ void core_dcmg(double* A, int m, int n,
 		for (j = 0; j < n; j++) {
 			expr = calculateDistance(l1, l2, i0, j0, distance_metric, z_flag) / localtheta[1];
 			// expr /= 2523.64; /*comment it for 2D real dataset, 2523.64 wind, 9348.317 soil*/ 
+			expr /= dist_scale;
 			// printf("%lf \n", expr);
 			if (expr == 0)
 				A[i + j * m] = sigma_square /*+ 1e-4*/;

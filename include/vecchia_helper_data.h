@@ -142,6 +142,7 @@ typedef struct llh_data
     int distance_metric; // 0 for euclidean; 1 for earth location. (real dataset)
     int perf;            // performance
     double *localtheta;
+    double dist_scale;
 } llh_data;
 
 #ifdef __cplusplus
@@ -163,6 +164,7 @@ extern "C"
         double beta;
         double nu;
         double nugget;
+        double dist_scale;
         // init
         double sigma_init;
         double beta_init;
@@ -274,6 +276,7 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
     opts->beta = 0.1;
     opts->nu = 0.5;
     opts->nugget = 0.0;
+    opts->dist_scale = 1.0;
 
     // local theta for kernel in GPs
     opts->sigma_init = 0.01;
@@ -381,6 +384,12 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
                         argv[i], info, num_loc);
                 exit(1);
             }
+        }
+        // dist_scale
+        else if ((strcmp("--dist_scale", argv[i]) == 0) && i + 1 < argc)
+        {
+            i++;
+            info = sscanf(argv[i], "%lf", &opts->dist_scale);
         }
         // conditioning size
         else if ((strcmp("--vecchia_cs", argv[i]) == 0) && i + 1 < argc)
