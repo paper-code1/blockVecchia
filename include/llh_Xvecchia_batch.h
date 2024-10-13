@@ -143,7 +143,9 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
                       z_flag, data->dist_scale);
         }
         // printVectorCPU(data->Cm, data->h_obs_new, data->ldc, i);
-        // printMatrixCPU(batchNum[i], batchNum[i], h_Cov + batchNumSquareAccum[i], h_lda[i], i);
+        // if (i == 0) {
+        //     printMatrixCPU(batchNum[i], batchNum[i], h_Cov + batchNumSquareAccum[i], h_lda[i], i);
+        // }
         free(loc_batch);
     }
     // h_Cov_cross: \sigma_{12} and h_Cov_conditioning: \sigma_{22}
@@ -162,6 +164,17 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
             loc_batch->x = data->locations_new->x + batchNumAccum[i];
             loc_batch->y = data->locations_new->y + batchNumAccum[i];
             loc_batch->z = data->time_flag ? (data->locations_new->z + batchNumAccum[i]) : NULL;
+            // please print loc_batch_con and loc_batch in format of "(x,y,z)"
+            // if (i == 1) {
+            //     for (int j = 0; j < batchNum[i]; j++) {
+            //         fprintf(stderr, "\"(%lf, %lf, %lf)\", \n", loc_batch->x[j], loc_batch->y[j], data->h_obs_new[batchNum[0] + j]);
+            //     }
+            //     printf("-----------------\n");
+            //     for (int j = 0; j < cs; j++) {
+            //         fprintf(stderr, "\"(%lf, %lf, %lf)\", \n", loc_batch_con->x[j], loc_batch_con->y[j], data->h_obs_conditioning[cs + j]);
+            //     }
+            // }
+
             // printLocations(cs, loc_batch_con);
             if (data->time_flag && data->kernel == 4)
             {
@@ -208,6 +221,8 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
     // for each iterations
     magma_dcopy(h_lddacon[0] * batchCount, d_obs_conditioning, 1, d_obs_conditioning_copy, 1, queue);
     magma_dcopy(total_size_dev_obs, d_obs, 1, d_obs_copy, 1, queue);
+    // printMatrixGPU(h_lda[1], 1, h_obs_array_copy[1], h_ldda[1], 1);
+    // printMatrixGPU(h_ldacon[1], 1, h_obs_conditioning_array_copy[1], h_lddacon[1], 1);
 
     h_Cov_tmp = h_Cov;
     d_Cov_tmp = d_Cov;
@@ -313,6 +328,7 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
         //     // printMatrixGPU(h_ldacon[i], h_ldacon[i], h_Cov_conditioning_array[i], h_lddacon[i], i);
         //     printMatrixGPU(h_ldacon[i], 1, h_obs_conditioning_array_copy[i], h_lddacon[i], i);
         // }
+        // printMatrixGPU(h_ldacon[1], 1, h_obs_conditioning_array_copy[1], h_lddacon[1], 1);
         magmablas_dtrsm_vbatched(
             MagmaLeft, MagmaLower, MagmaNoTrans, MagmaNonUnit,
             d_ldacon, d_const1, 1.,
@@ -321,6 +337,7 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
             batchCount, queue);
         // for (int i = 0; i < 1; i++) // batchCount
         //     printMatrixGPU(h_ldacon[i], 1, h_obs_conditioning_array_copy[i], h_lddacon[i], i);
+        // printMatrixGPU(h_ldacon[1], 1, h_obs_conditioning_array_copy[1], h_lddacon[1], 1);
 
         // printf("[info] Finished triangular solver. \n");
         /*
@@ -447,10 +464,7 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
         d_Cov_array, d_ldda,
         d_obs_array_copy, d_ldda,
         batchCount, queue);
-    // for (int i = 0; i < 10; i++)
-    // {
-    //     printMatrixGPU(h_lda[i], 1, h_obs_array_copy[i], h_ldda[i], i);
-    // }
+    // printMatrixGPU(h_lda[1], 1, h_obs_array_copy[1], h_ldda[1], 1);
     for (int i = 0; i < batchCount; ++i)
     {
         // determinant
@@ -467,11 +481,14 @@ T llh_Xvecchia_batch(unsigned n, const T *localtheta, T *grad, void *f_data)
     {
         _llk_tmp = -(norm2_result_h[k] * norm2_result_h[k] + logdet_result_h[k] + batchNum[k] * log(2 * PI)) * 0.5;
         llk += _llk_tmp;
-        // fprintf(stderr, "%dth log determinant is % lf\n", k, logdet_result_h[k]);
-        // fprintf(stderr, "%dth dot product is % lf\n", k, norm2_result_h[k] * norm2_result_h[k]);
-        // fprintf(stderr, "%dth pi is % lf\n", k, batchNum[k] * log(2 * PI));
-        // fprintf(stderr, "%dth log likelihood is % lf\n", k, _llk_tmp);
-        // fprintf(stderr, "-------------------------------------\n");
+        // fprintf(stderr, "%dth location is %lf %lf \n", k, data->locations_new->x[cs + k], data->locations_new->y[cs + k]);
+        // if (k == 1) {   
+        //     fprintf(stderr, "%dth log determinant is % lf\n", k, logdet_result_h[k]);
+        //     fprintf(stderr, "%dth dot product is % lf\n", k, norm2_result_h[k] * norm2_result_h[k]);
+        //     fprintf(stderr, "%dth pi is % lf\n", k, batchNum[k] * log(2 * PI));
+        //     fprintf(stderr, "%dth log likelihood is % lf\n", k, _llk_tmp);
+        //     fprintf(stderr, "-------------------------------------\n");
+        // }
         // if (k == 10)
         //     break;
     }

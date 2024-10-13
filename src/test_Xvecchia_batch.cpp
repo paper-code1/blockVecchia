@@ -341,6 +341,7 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
     for (int i = 0; i < batchCount; ++i){
         batchNum[i] = clusterNum[permIndex[i + firstClusterCount[0] - 1]];
     }
+
     for (int i = 1; i < (batchCount + 1); ++i)
     {
         batchNumAccum[i] += batchNumAccum[i - 1] + batchNum[i - 1];
@@ -378,7 +379,13 @@ int test_Xvecchia_batch(Vecchia_opts &opts, T alpha)
                     h_obs_new, locations_new,
                     starting_loc, batchNumAccum[i],
                     cs, i, data.distance_metric, opts.time_flag);
-                // printLocations(cs * (i+1), locations_con);
+                // if (i == 1) {
+                //     // print the first 10 h_obs_conditioning
+                //     for (int j = cs; j < cs*2; j++) {
+                //         fprintf(stderr, "%lg, ", h_obs_conditioning[j]);
+                //     }
+                //     printf("\n");
+                // }
             }
     }
     else
