@@ -25,18 +25,6 @@ Ensure you have the following libraries installed and their paths included in yo
 - GSL 2.6 or later
 - NLopt v2.7.1 or later
 
-### Building the Project
-
-1. Clone the repository:
-   ```
-   cd blockVecchia
-   ```
-
-2. Build the project using the provided Makefile:
-   ```
-   make
-   ```
-
 ## Usage
 
 The main executable for the Block Vecchia Algorithm is `test_dvecchia_batch`. Here are some example use cases:
@@ -70,17 +58,9 @@ Optional parameters:
 --kernel_init 0.1:0.1:0.1 --tol 4 --omp_threads 40
 ```
 
-### 4. How to reproduce the results in the paper
-
-Download the log data from [here](https://drive.google.com/drive/folders/1xV_5OrAZRdeOHerXth9nlYMDYZBqQQt7?usp=drive_link) (around 2.6 GB, including all the figures and source data and log files used in the paper).
-
-You can reproduce the results in the paper by reading the `./blockVecchia-TCH-24-075/README.md`, which clarifies the usage of the code and the data.
-
 ### Output
 
 Results are stored in the `./log` file after execution.
-
-## Contributing
 
 ## License
 
