@@ -389,7 +389,15 @@ extern "C" int parse_opts(int argc, char **argv, Vecchia_opts *opts)
         else if ((strcmp("--dist_scale", argv[i]) == 0) && i + 1 < argc)
         {
             i++;
-            info = sscanf(argv[i], "%lf", &opts->dist_scale);
+            double dist_scale;
+            info = sscanf(argv[i], "%lf", &dist_scale);
+            if (info == 1 && dist_scale > 0)
+                opts->dist_scale = dist_scale;
+            else
+            {
+                fprintf(stderr, "error: --dist_scale %s is invalid; ensure dist_scale > 0.\n", argv[i]);
+                exit(1);
+            }
         }
         // conditioning size
         else if ((strcmp("--vecchia_cs", argv[i]) == 0) && i + 1 < argc)
